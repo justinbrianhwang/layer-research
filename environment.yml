@@ -4,9 +4,6 @@ channels:
 dependencies:
   - python=3.11
   - pip
-  - numpy
-  - scipy
-  - pandas
   - pyyaml
   - tqdm
   - pytest
@@ -17,6 +14,11 @@ dependencies:
       - torch>=2.3
       - torchvision
       - setuptools<81   # imagecorruptions still imports pkg_resources
+      # numpy/scipy/pandas come from pip on purpose: conda's MKL builds crash alongside the pip torch wheel on Windows
+      - numpy
+      - scipy
+      - pandas
+      - pyarrow
       - timm>=1.0
       - imagecorruptions
       - wand
