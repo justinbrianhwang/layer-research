@@ -8,7 +8,7 @@ for i in $(seq 1 30); do $SSH true 2>/dev/null && break; echo "[vast] waiting fo
 $SSH 'set -e; cd /workspace 2>/dev/null || cd ~; \
   if [ ! -d layer-research ]; then git clone -q https://github.com/justinbrianhwang/layer-research.git; fi; \
   cd layer-research && git pull -q && \
-  pip install -q -e . "timm>=1.0" imagecorruptions scikit-image scikit-learn opencv-python-headless pandas pyarrow pyyaml tqdm "setuptools<81" 2>&1 | tail -2; \
+  pip install -q -e . "timm>=1.0" imagecorruptions scikit-image scikit-learn pandas pyarrow pyyaml tqdm "setuptools<81" && pip uninstall -y -q opencv-python opencv-python-headless && pip install -q "opencv-python-headless<5" 2>&1 | tail -2; \
   python -c "import torch, timm; print(\"torch\", torch.__version__, \"cuda\", torch.cuda.is_available(), torch.cuda.get_device_name(0), \"timm\", timm.__version__)"; \
   nvidia-smi --query-gpu=name,memory.total --format=csv,noheader; nproc; free -g | head -2; df -h . | tail -1'
 if [ -n "$DRIVER" ]; then
