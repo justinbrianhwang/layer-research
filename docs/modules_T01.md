@@ -18,8 +18,12 @@ All exports below are available from `layer_research`.
 
 `PairedImageDataset(records, spec, model, data_config=None)` resolves the model's timm
 evaluation transform; `data_config` can explicitly override input size and other transform
-settings. Corruption happens on original PIL pixels before either transform. Images must
-meet imagecorruptions' minimum size (32 by 32). Generated corruptions are not official
+settings. `pre_transform` applies resize/crop to the RGB PIL image, then corruption happens
+at model input resolution before `post_transform` converts to a tensor and normalizes,
+matching the ImageNet-C protocol. `input_resolution` exposes the configured (H, W) for
+logging. Pipelines without `ToTensor` or timm's `MaybeToTensor` raise `ValueError`.
+The resized/cropped images must meet imagecorruptions' minimum size (32 by 32).
+Generated corruptions are not official
 ImageNet-C benchmark files. Original identity is supplied by the caller, never inferred
 from filenames. Duplicate original IDs are rejected rather than silently deduplicated.
 
