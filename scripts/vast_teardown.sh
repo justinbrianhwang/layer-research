@@ -8,7 +8,7 @@ else
   IDS=$(python -c "import json; print(json.load(open('.vast_instance.json'))['instance_id'])")
 fi
 for IID in $IDS; do
-  echo "[vast] destroying instance $IID"; "$VAST" destroy instance "$IID" || true
+  echo "[vast] destroying instance $IID"; "$VAST" destroy instance -y "$IID" || true
 done
 sleep 5
 LEFT=$("$VAST" show instances --raw | python -c "import sys,json; print(len(json.load(sys.stdin)))")
