@@ -23,9 +23,9 @@ test data is touched; a small learned adapter is then trained at that block with
 
 | Stage | Description | State | Updated |
 |---|---|---|---|
-| S0 | Project skeleton, conda env, Vast.ai workflow | done | 2026-09-25 |
-| T01 | `data_protocol`, `feature_extractor`, `representation_metrics` + tests | in progress (Codex) | 2026-09-25 |
-| T02 | `patching_engine` + controls (proposal §8.5) | pending | |
+| S0 | Project skeleton, conda env, Vast.ai workflow, data plan (ImageNetV2) | done | 2026-09-25 |
+| T01 | `data_protocol`, `feature_extractor`, `representation_metrics` + tests | done (10 tests green); fix-up T01b in progress | 2026-09-25 |
+| T02 | `patching_engine` + controls (proposal §8.5) | in progress (Codex) | 2026-09-25 |
 | T03 | `evaluation`, `statistics`, `site_selection` | pending | |
 | T04 | `adapter_training` | pending | |
 | E1 | Representation change vs. partial-patch recovery | pending | |
