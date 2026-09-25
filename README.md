@@ -24,10 +24,10 @@ test data is touched; a small learned adapter is then trained at that block with
 | Stage | Description | State | Updated |
 |---|---|---|---|
 | S0 | Project skeleton, conda env, Vast.ai workflow, data plan (ImageNetV2) | done | 2026-09-25 |
-| T01 | `data_protocol`, `feature_extractor`, `representation_metrics` + tests | done (10 tests green); fix-up T01b in progress | 2026-09-25 |
-| T02 | `patching_engine` + controls (proposal §8.5) | in progress (Codex) | 2026-09-25 |
-| T03 | `evaluation`, `statistics`, `site_selection` | pending | |
-| T04 | `adapter_training` | pending | |
+| T01 | `data_protocol`, `feature_extractor`, `representation_metrics` + tests | done (15 tests) | 2026-09-25 |
+| T02 | `patching_engine` + controls (proposal §8.5) | done (30 tests) | 2026-09-25 |
+| T03 | `evaluation`, `statistics`, `site_selection` | in progress (Codex) | 2026-09-25 |
+| T04 | `adapter_training` | in progress (Codex) | 2026-09-25 |
 | E1 | Representation change vs. partial-patch recovery | pending | |
 | E2 | Budget dependence of site ranking | pending | |
 | E3 | Generalization to unseen corruptions | pending | |
