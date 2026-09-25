@@ -10,7 +10,8 @@ pip install -e . timm imagecorruptions scikit-learn scipy pandas pyyaml tqdm pya
 Every entry point accepts `--config`, `--device auto|cpu|cuda`, and `--limit`.
 Paths in YAML are relative to the working directory; run commands at the repository
 root. `output_root` defaults to `.`; it contains `cache/`, `results/raw/`, and
-`results/tables/`. Tables have both CSV and Parquet copies. Cache tensors and table
+`results/tables/`. Small tables have both CSV and Parquet copies; raw patching
+results are Parquet only. Cache tensors and table
 rows contain the SHA-256 model-state/timm-version fingerprint. Analysis checks
 fingerprints and cache consumers check original-image order. Each stage writes
 `results/manifests/<stage>[_<experiment>][_<split>]/run_manifest.json` with effective
@@ -33,9 +34,7 @@ python scripts/evaluate.py --config configs/deit_small.yaml --device cuda
 cp results/tables/selections.parquet results/tables/E1_selections.parquet
 cp results/tables/selections.csv results/tables/E1_selections.csv
 cp results/raw/patching_val.parquet results/raw/E1_patching_val.parquet
-cp results/raw/patching_val.csv results/raw/E1_patching_val.csv
 cp results/raw/patching_test.parquet results/raw/E1_patching_test.parquet
-cp results/raw/patching_test.csv results/raw/E1_patching_test.csv
 cp results/tables/E3_observed.parquet results/tables/E1_observed.parquet
 cp results/tables/E3_observed.csv results/tables/E1_observed.csv
 cp results/tables/E3_unseen.parquet results/tables/E1_unseen.parquet
@@ -60,15 +59,32 @@ prefix masks, so budgets share nested masks. Channel scores average token/channe
 absolute deltas over observed score conditions only; RMS is computed from fp32
 clean token activations before cache quantization.
 
-All 12 block summaries are cached even when donor layers are restricted. Donor
+All 12 block summaries, logits, labels, and RMS values are cached for every
+condition even when donor layers are restricted. Full-token donor files are
+written only for clean conditions, which skip corruption generation. Donor
+channel absolute deltas are reduced during observed score caching and saved in
+the summaries for `compute_metrics.py`; corrupted token files are unnecessary.
+Donor
 tensors default to fp16; `--tokens-dtype float32` changes storage. The precision
 check reports actual cached-fp16 versus recomputed-fp32 patched-logit maximum
 absolute errors at alpha one for each layer/fraction. Review that report before
 accepting fp16 for a full study; rerun caching in fp32 if its discrepancy is
 unacceptable. Cache generation holds one condition's selected token tensors in
-host memory. Patching bounds result memory to one image batch's sweep and writes
-Arrow row groups incrementally. Shuffled-donor controls require batches of at
+host memory. Patching retains donors in their cached dtype on the host and casts
+only the current batch to fp32 on the device. It bounds result memory to one image
+batch's sweep and writes Arrow row groups incrementally, logging elapsed time,
+rows written, and estimated remaining time after each condition with stdout flushed.
+Shuffled-donor controls require batches of at
 least two images; choose a batch size that does not leave a singleton tail.
+
+Both caching and patching accept `--batch-size B`. Defaults come from
+`runtime.batch_size_cuda` (128) on CUDA and `runtime.batch_size` (32) on CPU.
+Patching also accepts `--mask-seeds N`, `--layers a,b,c`, and
+`--fractions q1,q2`; requested layers must already have clean donor caches.
+Effective overrides are recorded in the manifest configuration. Loaders use
+`runtime.num_workers` (default 4, base config 8), `runtime.pin_memory` (default
+true on CUDA, explicitly true in the base config), and nonpersistent workers.
+Per-image corruption seeds preserve results across worker counts.
 
 Selection is separate per nominal fraction, alpha and cap. It uses observed score
 metrics and observed validation utilities only. Metric directions are frozen by

@@ -57,6 +57,9 @@ adapter:
 
 runtime:
   batch_size: 32
+  num_workers: 8
+  batch_size_cuda: 128
+  pin_memory: true
   threads: 4
 
 evaluation:

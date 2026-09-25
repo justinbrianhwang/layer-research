@@ -22,9 +22,7 @@ def main():
         frames.append(df)
         if name in run.cfg["corruptions"]["observed"]:
             for l in layers:
-                a = read_cache(base / f"tokens_layer{l}.pt", run, clean["image_ids"])["tokens"].float()
-                b = read_cache(path / f"tokens_layer{l}.pt", run, clean["image_ids"])["tokens"].float()
-                channels[l].append((a-b).abs().mean((0, 1)))
+                channels[l].append(corr["channel_abs_delta"][l])
     table(pd.concat(frames), run.paths.tables / "metrics_score", run)
     torch.save(dict(channel_scores={l: torch.stack(v).mean(0) for l, v in channels.items()}, r_l=clean["r_l"], split="score", model_fingerprint=run.fingerprint), run.paths.cache / "score/channel_stats.pt")
     run.finish()

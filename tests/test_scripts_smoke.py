@@ -39,7 +39,7 @@ def test_script_chain(tmp_path, monkeypatch):
     cfg["corruptions"].update(observed=["gaussian_noise"], unseen=["contrast"], severities=[1])
     cfg["patching"].update(channel_fractions=[.5], mask_seeds=1, alphas=[.5, 1.], norm_cap_rho=.5)
     cfg["evaluation"]["bootstrap_resamples"] = 5
-    cfg["runtime"] = dict(batch_size=2, threads=1)
+    cfg["runtime"] = dict(batch_size=2, threads=1, num_workers=0)
     cfg["adapter"].update(widths=[4], default_width=4, training_seeds=1, steps=1)
     cfg["output_root"] = str(tmp_path)
     path = tmp_path / "config.yaml"
@@ -53,12 +53,37 @@ def test_script_chain(tmp_path, monkeypatch):
     original = (tmp_path / "splits.json").read_bytes()
     invoke("download_data")
     assert (tmp_path / "splits.json").read_bytes() == original
-    invoke("cache_features")
+    invoke("cache_features", "--batch-size", "2")
+    for split in ("score", "val", "test"):
+        cache = tmp_path / "cache" / split
+        assert torch.load(cache / "clean/tokens_layer0.pt", weights_only=False)["tokens"].dtype == torch.float16
+        for condition in ("gaussian_noise_1", "contrast_1"):
+            assert not list((cache / condition).glob("tokens_layer*.pt"))
+            assert torch.load(cache / condition / "summaries.pt", weights_only=False)["r_l"][0] > 0
+
+    from types import SimpleNamespace
+    run = SimpleNamespace(cfg=cfg, args=SimpleNamespace(limit=None), model=tiny(cfg, "cpu"), device=torch.device("cpu"))
+    serial = list(common.loader(run, "score", "gaussian_noise", 1))
+    cfg["runtime"]["num_workers"] = 2
+    parallel = list(common.loader(run, "score", "gaussian_noise", 1))
+    for expected, actual in zip(serial, parallel, strict=True):
+        for a, b in zip(expected[:3], actual[:3]):
+            torch.testing.assert_close(a, b, rtol=0, atol=0)
+        assert expected[3] == actual[3]
+    cfg["runtime"]["num_workers"] = 0
+    import layer_research.data_protocol as protocol
+    with monkeypatch.context() as patch:
+        def no_corruption(*args):
+            raise AssertionError("clean loader must not generate corruption")
+        patch.setattr(protocol, "corrupt_image", no_corruption)
+        for clean, corr, _, _ in common.loader(run, "score", "clean", 0, paired=False):
+            torch.testing.assert_close(clean, corr)
     invoke("compute_metrics")
     assert len(pd.read_parquet(tmp_path / "results/tables/metrics_score.parquet")) == 8
     for split in ("val", "test"):
         invoke("run_patching", "--split", split)
         frame = pd.read_parquet(tmp_path / f"results/raw/patching_{split}.parquet")
+        assert not (tmp_path / f"results/raw/patching_{split}.csv").exists()
         assert len(frame) == 2 * 2 * 6
         assert frame.groupby(["corruption", "intervention_type"]).image_id.nunique().eq(2).all()
     invoke("select_sites")
@@ -88,6 +113,14 @@ def test_script_chain(tmp_path, monkeypatch):
     manifest = json.loads((tmp_path / "results/manifests/evaluate/run_manifest.json").read_text())
     assert len(manifest["model_fingerprint"]) == 64
     assert manifest["elapsed_seconds"] > 0
+    invoke("run_patching", "--mask-seeds", "2", "--layers", "0", "--fractions", "0.25,0.5", "--batch-size", "2")
+    frame = pd.read_parquet(tmp_path / "results/raw/patching_val.parquet")
+    assert len(frame) == 2 * 2 * (4 + 5)
+    manifest = json.loads((tmp_path / "results/manifests/run_patching_E1_val/run_manifest.json").read_text())
+    assert manifest["config"]["patching"]["mask_seeds"] == 2
+    assert manifest["config"]["patching"]["channel_fractions"] == [.25, .5]
+    assert manifest["config"]["representation"]["layers"] == [0]
+    assert manifest["config"]["runtime"]["batch_size"] == 2
 
 
 def test_fingerprint_and_alignment(tmp_path, monkeypatch):

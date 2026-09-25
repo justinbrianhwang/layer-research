@@ -7,7 +7,7 @@ VAST="${VAST:-$HOME/AppData/Roaming/Python/Python314/Scripts/vastai.exe}"
 MAX_DPH="${1:-0.25}"
 IMAGE="${IMAGE:-pytorch/pytorch:2.4.0-cuda12.4-cudnn9-runtime}"
 DISK="${DISK:-60}"
-QUERY="gpu_name in [RTX_3090,RTX_4080S,RTX_4090] num_gpus=1 gpu_ram>=20 reliability>0.98 inet_down>200 disk_space>=${DISK} cuda_vers>=12.4 rentable=true dph<=${MAX_DPH}"
+QUERY="gpu_name in [RTX_3090,RTX_4080S,RTX_4090] num_gpus=1 gpu_ram>=20 reliability>0.98 inet_down>200 disk_space>=${DISK} cpu_ram>=30000 cpu_cores_effective>=8 cuda_vers>=12.4 rentable=true dph<=${MAX_DPH}"
 
 echo "[vast] searching offers: $QUERY"
 OFFER=$("$VAST" search offers "$QUERY" -o dph --raw | python -c "import sys,json; d=json.load(sys.stdin); print(d[0]['id'] if d else '')")

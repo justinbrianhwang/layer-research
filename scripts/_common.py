@@ -13,6 +13,7 @@ import pandas as pd
 import timm
 import torch
 import yaml
+from PIL import Image
 from torch.utils.data import DataLoader
 from layer_research.data_protocol import CorruptionSpec, PairedImageDataset, load_splits
 
@@ -74,6 +75,15 @@ class Run:
             raise ValueError("limit must be positive")
         self.paths = OutputPaths(self.cfg)
         self.device = get_device(args.device)
+        runtime = self.cfg.setdefault("runtime", {})
+        batch_size = getattr(args, "batch_size", None)
+        if batch_size is None:
+            batch_size = runtime.get("batch_size_cuda", 128) if self.device.type == "cuda" else runtime.get("batch_size", 32)
+        if batch_size <= 0:
+            raise ValueError("batch size must be positive")
+        runtime["batch_size"] = batch_size
+        runtime.setdefault("num_workers", 4)
+        runtime.setdefault("pin_memory", self.device.type == "cuda")
         self.start = time.perf_counter()
         self.started = datetime.now(timezone.utc).isoformat()
         self.model = create_model(self.cfg, self.device) if model else None
@@ -106,7 +116,17 @@ def condition_dir(paths, split, name, severity):
     return paths.cache / split / ("clean" if name == "clean" else f"{name}_{severity}")
 
 
-def loader(run, split, name, severity):
+class CleanImageDataset(PairedImageDataset):
+    """Reuse paired evaluation transforms without generating a corruption."""
+
+    def __getitem__(self, index):
+        path, label, image_id = self.records[index]
+        with Image.open(path) as source:
+            clean = self.post_transform(self.pre_transform(source.convert("RGB")))
+        return clean, clean, label, image_id
+
+
+def loader(run, split, name, severity, paired: bool = True):
     ids = set(load_splits(run.cfg["data"]["split_file"])[split])
     rec = [r for r in records(run.cfg) if r[2] in ids]
     # Seeded order avoids a class-sorted prefix in limited smoke runs.
@@ -116,8 +136,13 @@ def loader(run, split, name, severity):
         raise ValueError(f"Empty split: {split}")
     spec = CorruptionSpec(name if name != "clean" else "contrast", severity or 1,
                           run.cfg["corruptions"]["corruption_seed"])
-    ds = PairedImageDataset(rec, spec, run.model, {"input_size": run.cfg["model"]["input_size"]})
-    return DataLoader(ds, batch_size=run.cfg.get("runtime", {}).get("batch_size", 32), shuffle=False)
+    dataset = PairedImageDataset if paired else CleanImageDataset
+    ds = dataset(rec, spec, run.model, {"input_size": run.cfg["model"]["input_size"]})
+    runtime = run.cfg.get("runtime", {})
+    return DataLoader(ds, batch_size=runtime.get("batch_size", 32), shuffle=False,
+                      num_workers=runtime.get("num_workers", 4),
+                      pin_memory=runtime.get("pin_memory", run.device.type == "cuda"),
+                      persistent_workers=False)
 
 
 def read_cache(path, run, ids=None):
