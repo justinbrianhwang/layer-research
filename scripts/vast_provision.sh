@@ -11,7 +11,7 @@ QUERY="gpu_name in [RTX_3090,RTX_4080S,RTX_4090] num_gpus=1 gpu_ram>=20 reliabil
 
 echo "[vast] searching offers: $QUERY"
 # cpu_ram is filtered here (the query-language cpu_ram term matches nothing); MB units.
-OFFER=$("$VAST" search offers "$QUERY" -o dph --raw | python -c "import sys,json; d=[o for o in json.load(sys.stdin) if o['cpu_ram']>=30000]; print(d[0]['id'] if d else '')")
+OFFER=$("$VAST" search offers "$QUERY" -o dph --raw | python -c "import sys,json; ex=set(int(x) for x in '${EXCLUDE_MACHINES:-}'.split(',') if x); d=[o for o in json.load(sys.stdin) if o['cpu_ram']>=30000 and o['machine_id'] not in ex]; print(d[0]['id'] if d else '')")
 [ -n "$OFFER" ] || { echo "no offer under \$$MAX_DPH/h"; exit 1; }
 echo "[vast] creating instance from offer $OFFER"
 CREATE=$("$VAST" create instance "$OFFER" --image "$IMAGE" --disk "$DISK" --ssh --direct --raw)
