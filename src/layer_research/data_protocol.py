@@ -126,6 +126,7 @@ class PairedImageDataset(Dataset):
     """Records are (path, integer label, original image ID); model defines eval transform."""
     def __init__(self, records, spec: CorruptionSpec, model, data_config=None):
         from timm.data import create_transform, resolve_data_config
+        from torchvision.transforms import Compose, ToTensor
         self.records = list(records)
         self.spec = spec
         ids = [record[2] for record in self.records]
@@ -133,6 +134,15 @@ class PairedImageDataset(Dataset):
             raise ValueError("Records must have unique original image IDs")
         self.data_config = resolve_data_config(data_config or {}, model=model)
         self.transform = create_transform(**self.data_config, is_training=False)
+        for index, transform in enumerate(self.transform.transforms):
+            # timm's MaybeToTensor is also a ToTensor subclass.
+            if isinstance(transform, ToTensor):
+                self.pre_transform = Compose(self.transform.transforms[:index])
+                self.post_transform = Compose(self.transform.transforms[index:])
+                break
+        else:
+            raise ValueError("Evaluation transform must contain ToTensor or MaybeToTensor")
+        self.input_resolution = tuple(self.data_config["input_size"][-2:])
 
     def __len__(self):
         return len(self.records)
@@ -140,6 +150,6 @@ class PairedImageDataset(Dataset):
     def __getitem__(self, index):
         path, label, image_id = self.records[index]
         with Image.open(path) as source:
-            clean = source.convert("RGB")
+            clean = self.pre_transform(source.convert("RGB"))
         corrupted = corrupt_image(clean, self.spec, image_id)
-        return self.transform(clean), self.transform(corrupted), label, image_id
+        return self.post_transform(clean), self.post_transform(corrupted), label, image_id

@@ -1,12 +1,16 @@
 ﻿import json
 import numpy as np
 import pytest
+import timm
 import torch
 from PIL import Image
 from timm.models.vision_transformer import VisionTransformer
 from torch.utils.data import DataLoader
+from torchvision import transforms
+from timm.data.transforms import MaybeToTensor
 
 from layer_research import *
+from layer_research import data_protocol
 
 
 @pytest.fixture
@@ -103,8 +107,11 @@ def test_dataset_and_extraction(model, tmp_path):
     loader = DataLoader(dataset, batch_size=2)
     clean, corrupted, label, image_id = dataset[0]
     with Image.open(records[0][0]) as original:
-        expected = dataset.transform(corrupt_image(original, dataset.spec, image_id))
+        prepared = dataset.pre_transform(original.convert("RGB"))
+        expected = dataset.post_transform(corrupt_image(prepared, dataset.spec, image_id))
+        assert torch.equal(clean, dataset.transform(original.convert("RGB")))
     assert torch.equal(corrupted, expected)
+    assert dataset.input_resolution == (32, 32)
     assert clean.shape == corrupted.shape == (3, 32, 32)
     features = extract_paired_features(model, loader, [0, 2], ["cls", "patch_mean"], "cpu")
     assert features["image_ids"] == ["0", "1", "2"]
@@ -121,6 +128,54 @@ def test_dataset_and_extraction(model, tmp_path):
     scores = layerwise_scores(features, ["relative_distance", "linear_cka", "activation_norm", "amplification_ratio"])
     assert len(scores) == 16 and set(scores.label_access) == {"none"}
     assert set(scores.n_samples) == {3}
+
+
+def test_corruption_receives_input_resolution(model, tmp_path, monkeypatch):
+    path = tmp_path / "source.png"
+    Image.new("RGB", (40, 40), (70, 80, 90)).save(path)
+    spec = CorruptionSpec("gaussian_noise", 1, 9)
+    received = []
+
+    def spy(image, actual_spec, image_id):
+        received.append((image.size, image.mode, np.asarray(image).dtype, actual_spec, image_id))
+        return image.copy()
+
+    monkeypatch.setattr(data_protocol, "corrupt_image", spy)
+    dataset = PairedImageDataset([(path, 2, "source")], spec, model,
+                                 {"input_size": (3, 32, 32)})
+    clean, corrupted, label, image_id = dataset[0]
+    assert received == [((32, 32), "RGB", np.dtype("uint8"), spec, "source")]
+    assert torch.equal(clean, corrupted)
+    assert (label, image_id) == (2, "source")
+
+
+def test_deit_preprocessing(model):
+    # The model fixture limits CPU threads and restores them after the test.
+    deit = timm.create_model("deit_small_patch16_224", pretrained=False)
+    config = timm.data.resolve_data_config({}, model=deit)
+    dataset = PairedImageDataset([], CorruptionSpec("contrast", 1, 9), deit, config)
+    prepared = dataset.pre_transform(Image.new("RGB", (320, 280)))
+    assert isinstance(prepared, Image.Image)
+    assert prepared.size == dataset.input_resolution == (224, 224)
+    assert dataset.post_transform(prepared).shape == (3, 224, 224)
+
+
+@pytest.mark.parametrize("conversion", [transforms.ToTensor, MaybeToTensor, None])
+def test_transform_conversion_boundary(model, monkeypatch, conversion):
+    steps = [transforms.Resize((32, 40))]
+    if conversion is not None:
+        steps.extend([conversion(), transforms.Normalize((.5,) * 3, (.5,) * 3)])
+    monkeypatch.setattr(timm.data, "create_transform", lambda **kwargs: transforms.Compose(steps))
+    spec = CorruptionSpec("contrast", 1, 9)
+    if conversion is None:
+        with pytest.raises(ValueError, match="ToTensor or MaybeToTensor"):
+            PairedImageDataset([], spec, model)
+    else:
+        dataset = PairedImageDataset([], spec, model, {"input_size": (3, 32, 40)})
+        prepared = dataset.pre_transform(Image.new("RGB", (50, 50)))
+        assert prepared.size == (40, 32)
+        assert dataset.input_resolution == (32, 40)
+        assert dataset.post_transform(prepared).shape == (3, 32, 40)
 
 
 def test_cka(caplog):
