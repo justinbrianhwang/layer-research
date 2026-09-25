@@ -41,7 +41,7 @@ Results are appended to the [Results](#results) section as they land.
 
 ## The question in one paragraph
 
-Take a fixed, pretrained ViT (non-distilled DeiT-S/16, 12 blocks, d=384). Feed it a clean image and
+Take a fixed, pretrained ViT (non-distilled DeiT-S/16, 12 blocks, $d=384$). Feed it a clean image and
 its corrupted version (ImageNet-C style noise, blur, contrast, JPEG). At every block boundary we can
 measure *how much the representation changed* (normalized distance, cosine distance, linear CKA,
 neighbourhood preservation). Separately, at every block we can *intervene* with a fixed budget and
@@ -63,26 +63,61 @@ whether representation metrics are a trustworthy basis for the decision "where d
 
 ## Two experiment families
 
-**Diagnostic partial patching (privileged).** At block *l*, move the corrupted representation part
-of the way toward the clean one on a fixed subset of channels:
+Write the clean image as $x$, its corrupted version as $	ilde{x}=T_{c,s}(x)$, the network up to block $l$
+as $h_l$ and the rest of the network as $g_l$, so that $F(x)=g_l(h_l(x))$.
 
-`ĥ_l = h_l(x̃) + α · M_{l,q} ⊙ [h_l(x) − h_l(x̃)]`
+**Diagnostic partial patching (privileged).** At block $l$, move the corrupted representation part of
+the way toward the clean one on a fixed subset of channels and let the rest of the model run unchanged:
 
-with channel fraction `q ∈ {0.01, 0.05, 0.10, 0.20}` and strength `α ∈ {0.25, 0.5, 1.0}`. Masks are
-random but fixed per seed and nested across budgets. This *uses the clean representation* and is a
-diagnostic, not a defense. Full-state replacement is used only as a positive control.
+$$
+\widehat{h}_l = h_l(	ilde{x}) + lpha\, M_{l,q} \odot ig[h_l(x) - h_l(	ilde{x})ig]
+$$
 
-**Learned residual adapter (deployable).** Insert one zero-initialized bottleneck MLP after block *l*,
-freeze the backbone and classifier, train only the adapter on observed corruptions plus a clean-
-preservation term. At test time it sees only the corrupted image. Bottleneck widths `r ∈ {8, 32, 64}`.
+where $M_{l,q}$ is a channel mask selecting $k=\lfloor qd floor$ of the $d$ channels for every token,
+$q \in \{0.01, 0.05, 0.10, 0.20\}$ is the channel budget and $lpha \in \{0.25, 0.5, 1.0\}$ the strength.
+Masks are random but fixed per seed and nested across budgets. This *uses the clean representation*
+and is a diagnostic, not a defense. Full-state replacement ($M=\mathbf{1}$, $lpha=1$) trivially gives
+$g_l(h_l(x)) = F(x)$ and is used only as a positive control.
+
+**Learned residual adapter (deployable).** Insert one zero-initialized bottleneck MLP after block $l$,
+freeze the backbone and classifier, and train only the adapter:
+
+$$
+\widehat{h}_l = h_l(	ilde{x}) + A_{\phi,l}ig(h_l(	ilde{x})ig), \qquad
+A_{\phi,l}(h) = W_{\mathrm{up}}\, \sigmaig(W_{\mathrm{down}}\, \mathrm{LN}(h)ig)
+$$
+
+with the training objective
+
+$$
+\mathcal{L}_{\mathrm{adapt}} = \mathbb{E}_{(x,y),c,s}\Big[\ellig(F_{l,\phi}(T_{c,s}(x)),yig)
++ \lambda_{\mathrm{clean}}\, \ellig(F_{l,\phi}(x),yig)\Big].
+$$
+
+At test time the adapter sees only the corrupted image. Bottleneck widths $r \in \{8, 32, 64\}$.
 
 ## Primary evaluation: selection regret
 
-For a selection rule *m* that picks a site using only observed data, regret on the test set is the
-gap between the best admissible candidate (including "no intervention") and the candidate *m* chose.
-Baselines: no intervention, fixed front / middle / back block, random block, metric-based selection,
-small direct search, and full validation-set sweep. Uncertainty is a paired bootstrap over original
-image ids, with mask seeds and training seeds reported separately.
+The effect of an intervention at block $l$ under budget $B$ is the accuracy change in percentage points,
+
+$$
+U_l(B) = 100\,ig[\mathrm{Acc}(F_l^{\mathrm{patch}}) - \mathrm{Acc}(F)ig], \qquad U(arnothing)=0,
+$$
+
+where $arnothing$ denotes no intervention. For a selection rule $m$ that picks a site
+$\widehat{l}_m(B)$ using only observed data, regret on the test set is the gap to the best admissible
+candidate $\mathcal{A}_{\mathrm{val}}(B) \subseteq \mathcal{L}\cup\{arnothing\}$:
+
+$$
+\mathrm{Regret}_m(B) = \max_{a \in \mathcal{A}_{\mathrm{val}}(B)} U_{\mathrm{test}}(a,B) - U_{\mathrm{test}}ig(\widehat{l}_m(B),Big).
+$$
+
+The maximum is a post-hoc reference computed after all candidates are evaluated; no selector ever
+sees it. Baselines: no intervention, fixed front / middle / back block, random block, metric-based
+selection, small direct search, and full validation-set sweep. Sites whose effects differ by less than a
+pre-set tolerance $	au$ are reported as an equivalence set
+$\mathcal{L}_	au(B)=\{\,l : \max_j U_j(B) - U_l(B) \le 	au\,\}$ rather than as a single "critical layer".
+Uncertainty is a paired bootstrap over original image ids, with mask seeds and training seeds reported separately.
 
 ## Data protocol
 
