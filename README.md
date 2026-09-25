@@ -11,6 +11,12 @@ in [`vision_intervention_site_selection_proposal.md`](vision_intervention_site_s
 (Korean, with English title and formulas). The proposal is the source of truth for every design
 decision; this README summarizes it and tracks progress.
 
+![Pipeline overview: paired clean/corrupted inputs, frozen ViT with block-boundary probes, two per-block measurements (representation change and budget-limited intervention), site selection fixed before deployment, learned adapter at the selected block, and evaluation by regret, unseen-corruption generalization, and diagnostic-vs-adapter ranking](assets/figs/pipeline.png)
+
+*Figure 1. The full pipeline. Representation change is measured at every block boundary; a fixed-budget
+partial patch is applied at every block with the same rule; one block is chosen per model before any
+test data is touched; a small learned adapter is then trained at that block with the backbone frozen.*
+
 ---
 
 ## Status
