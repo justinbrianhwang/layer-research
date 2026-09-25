@@ -140,3 +140,92 @@ def test_fingerprint_and_alignment(tmp_path, monkeypatch):
     run.fingerprint = "wrong"
     with pytest.raises(ValueError, match="fingerprint"):
         common.read_cache(path, run)
+
+
+def synthetic_effects():
+    rng = np.random.default_rng(12)
+    rows = []
+    for image in range(8):
+        for layer in (1, 3, 5):
+            for seed in range(4):
+                rows.append(dict(image_id=f"image_{image}", layer_id=layer, mask_seed=seed,
+                    experiment="E1", fraction=.5, alpha=1., norm_cap=np.nan,
+                    corruption="noise", severity=1, intervention_type="partial_channel",
+                    is_observed=True, label=0, baseline_prediction=int(rng.integers(2)),
+                    clean_prediction=0, post_intervention_prediction=int(rng.integers(2)),
+                    baseline_margin=float(rng.normal()), post_intervention_margin=float(rng.normal())))
+    return pd.DataFrame(rows)
+
+
+def test_fast_image_bootstrap(monkeypatch):
+    monkeypatch.syspath_prepend(str(SCRIPTS))
+    common = importlib.import_module("_common")
+    evaluate = importlib.import_module("evaluate")
+    from layer_research.evaluation import accuracy_gain_pp, regret
+    from layer_research.statistics import paired_bootstrap
+
+    frame = synthetic_effects()
+    D, ids, layers = evaluate.image_matrix(evaluate.image_aggregates(frame))
+    assert len(ids) == 8
+    boot = common.fast_image_bootstrap(D, n_boot=200, seed=7)
+    utilities = accuracy_gain_pp(frame, ["layer_id"]).set_index("layer_id").U
+    np.testing.assert_array_equal(boot["mean"], utilities.reindex(layers).to_numpy())
+    for index, layer in enumerate(layers):
+        reference = paired_bootstrap(frame[frame.layer_id.eq(layer)],
+            lambda data: accuracy_gain_pp(data, []).U.iloc[0], n_boot=200, seed=7)
+        width = reference["ci_high"] - reference["ci_low"]
+        assert abs(boot["ci_low"][index] - reference["ci_low"]) <= width
+        assert abs(boot["ci_high"][index] - reference["ci_high"]) <= width
+
+    # Verify every regret replicate against the library statistic on resampled rows,
+    # including a restricted admissible set and the no-intervention choice.
+    rng = np.random.default_rng(7)
+    for sample in boot["samples"][:10]:
+        sampled = pd.concat([frame[frame.image_id.eq(ids[i])] for i in rng.integers(len(ids), size=len(ids))])
+        actual = accuracy_gain_pp(sampled, ["layer_id"]).set_index("layer_id").U
+        np.testing.assert_allclose(sample, actual.reindex(layers))
+        for chosen in (1, "none"):
+            value = sample[0] if chosen == 1 else 0.
+            assert max(0., sample[0], sample[2]) - value == pytest.approx(regret(actual, chosen, [1, 5]))
+    with pytest.raises(ValueError, match="balanced"):
+        evaluate.image_matrix(evaluate.image_aggregates(frame.iloc[1:]))
+    for invalid in (np.empty((0, 3)), np.array([[np.nan]]), np.array([1., 2.])):
+        with pytest.raises(ValueError):
+            common.fast_image_bootstrap(invalid)
+    for invalid in (0, True, 1.5):
+        with pytest.raises(ValueError):
+            common.fast_image_bootstrap(D, n_boot=invalid)
+
+
+@pytest.mark.parametrize("statistics", [True, False])
+def test_projected_tables_and_effects(tmp_path, monkeypatch, statistics):
+    monkeypatch.syspath_prepend(str(SCRIPTS))
+    common = importlib.import_module("_common")
+    evaluate = importlib.import_module("evaluate")
+    from types import SimpleNamespace
+    from layer_research.evaluation import layer_effect_table
+    frame = synthetic_effects()
+    frame["model_fingerprint"] = "test-fingerprint"
+    frame["donor_image_id"] = "unused"
+    path = tmp_path / "raw.parquet"
+    frame.to_parquet(path, index=False, row_group_size=13, write_statistics=statistics)
+    columns = evaluate.GROUPS + ["image_id", "is_observed", "label", "baseline_prediction",
+                                 "clean_prediction", "post_intervention_prediction"]
+    run = SimpleNamespace(fingerprint=None)
+    projected = common.read_table_columns(path, run, columns)
+    assert projected.columns.tolist() == columns
+    assert run.fingerprint == "test-fingerprint"
+    for col in ("image_id", "corruption", "intervention_type"):
+        assert isinstance(projected[col].dtype, pd.CategoricalDtype)
+    expected = layer_effect_table(frame, group_cols=evaluate.GROUPS)
+    actual = evaluate.effect_table(projected, path)
+    pd.testing.assert_frame_equal(actual, expected, check_dtype=False, check_categorical=False)
+    # An incompatible fingerprint anywhere in the file must be rejected.
+    frame.loc[frame.index[-1], "model_fingerprint"] = "different"
+    frame.to_parquet(path, index=False, row_group_size=13, write_statistics=statistics)
+    with pytest.raises(ValueError, match="fingerprint"):
+        common.read_table_columns(path, run, columns)
+    frame["model_fingerprint"] = "different"
+    frame.to_parquet(path, index=False, write_statistics=statistics)
+    with pytest.raises(ValueError, match="fingerprint"):
+        common.read_table_columns(path, run, columns)

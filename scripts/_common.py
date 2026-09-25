@@ -10,6 +10,7 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import pyarrow.parquet as pq
 import timm
 import torch
 import yaml
@@ -172,3 +173,68 @@ def read_table(path, run):
         raise ValueError("Incompatible table fingerprints")
     run.fingerprint = fps[0]
     return df
+
+
+def read_table_columns(path, run, columns):
+    """Project analysis columns, checking provenance without a repeated string column.
+
+    Row-group min/max statistics certify the fingerprint for all rows. Older
+    files without statistics are checked in bounded Arrow batches instead.
+    """
+    parquet = pq.ParquetFile(path)
+    fingerprint_index = parquet.schema.names.index("model_fingerprint")
+    fingerprints = set()
+    for i in range(parquet.num_row_groups):
+        group = parquet.metadata.row_group(i)
+        if not group.num_rows:
+            continue
+        stats = group.column(fingerprint_index).statistics
+        if stats is not None and stats.has_min_max and stats.null_count == 0:
+            fingerprints.update((stats.min, stats.max))
+        else:
+            for batch in parquet.iter_batches(row_groups=[i], columns=["model_fingerprint"]):
+                fingerprints.update(batch.column(0).unique().to_pylist())
+    if (len(fingerprints) != 1 or None in fingerprints or
+            (run.fingerprint is not None and run.fingerprint not in fingerprints)):
+        raise ValueError("Incompatible table fingerprints")
+    run.fingerprint = next(iter(fingerprints))
+    columns = list(columns)
+    forbidden = {"model_fingerprint", "donor_image_id", "baseline_margin",
+                 "post_intervention_margin", "baseline_loss", "post_intervention_loss"}
+    if forbidden.intersection(columns):
+        raise ValueError("Raw provenance, donor, margin and loss columns are not analysis columns")
+    arrow = pq.read_table(path, columns=columns)
+    categories = [c for c in ("corruption", "intervention_type", "mask_policy", "image_id", "experiment") if c in columns]
+    return arrow.to_pandas(categories=categories)
+
+
+def bootstrap_summary(estimate, samples, confidence=0.95):
+    """Percentile summary for scalar or column-wise NumPy bootstrap samples."""
+    if not 0 < confidence < 1:
+        raise ValueError("confidence must lie between zero and one")
+    tail = (1 - confidence) / 2
+    low, high = np.quantile(samples, [tail, 1 - tail], axis=0)
+    return dict(mean=estimate, ci_low=low, ci_high=high, samples=samples)
+
+
+def fast_image_bootstrap(D, n_boot=1000, seed=0, confidence=0.95):
+    """Bootstrap all layer gains together from balanced per-image differences.
+
+    D has shape (original images, layers). Every replicate uses the same image
+    indices for every layer; returned samples can be reused for frozen choices
+    and regret against any admissible subset (including a zero-valued none).
+    Memory is bounded by one image resample plus the small replicate/layer array.
+    """
+    D = np.asarray(D, dtype=float)
+    if D.ndim != 2 or 0 in D.shape or not np.isfinite(D).all():
+        raise ValueError("D requires nonempty finite image/layer data")
+    if not isinstance(n_boot, (int, np.integer)) or isinstance(n_boot, bool) or n_boot < 1:
+        raise ValueError("n_boot must be a positive integer")
+    if not 0 < confidence < 1:
+        raise ValueError("confidence must lie between zero and one")
+    rng = np.random.default_rng(seed)
+    samples = np.empty((n_boot, D.shape[1]))
+    for i in range(n_boot):
+        idx = rng.integers(len(D), size=len(D))
+        samples[i] = 100 * D[idx].mean(axis=0)
+    return bootstrap_summary(100 * D.mean(axis=0), samples, confidence)

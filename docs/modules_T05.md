@@ -97,6 +97,23 @@ filters choices using test outcomes. It reports per-condition recovery/new-error
 seed variability, and observed/unseen balanced-mixture gain and regret CIs using
 paired original-image bootstrap. Equivalence sets include no intervention.
 
+Selection and evaluation project only analysis columns from Parquet and convert
+repeated identifiers to categoricals before pandas aggregation. Fingerprints are
+checked across row-group statistics, with bounded Arrow reads when statistics
+are absent. Evaluation reads margin columns separately in bounded Arrow batches
+and retains only differences to preserve the existing `margin_change` output;
+raw margins, losses, donor IDs, and fingerprints are excluded from analysis frames.
+Condition effects use vectorized groupby reductions. Bootstrap CIs are computed
+on per-image aggregates (the mathematically identical statistic for the balanced
+sweep, with a different resample stream than the library function). Evaluation
+checks balanced image/layer counts, aggregates each experiment/fraction/alpha/cap/
+domain once, and reuses paired NumPy layer replicates across frozen selectors.
+No-intervention utility remains zero and each regret replicate recomputes the
+best admissible layer including no intervention. Progress is printed per domain
+and selection, and manifests/console output retain total wall time. The full
+24.5-million-row performance targets require a real-data benchmark; the offline
+tests verify correctness rather than those wall-time targets.
+
 Adapter fitting uses only observed corruptions on fit, with matching initialization
 and loader seeds across sites. Evaluation includes observed, unseen, and one copy
 of clean rows. Checkpoints, loss curves, per-site costs and exhaustive reference
