@@ -13,14 +13,22 @@ from _common import Run, parser, loader, conditions, set_all_seeds, table
 def main():
     p = parser(__doc__)
     p.add_argument("--site", type=int)
+    p.add_argument("--widths", type=lambda s: [int(v) for v in s.split(",")])
+    p.add_argument("--seeds", type=int)
     run = Run(p.parse_args(), "train_adapters")
     cfg = run.cfg["adapter"]
     layers = [run.args.site] if run.args.site is not None else run.cfg["representation"]["layers"]
     widths = [cfg["default_width"]] if run.args.site is not None else cfg["widths"]
+    if run.args.widths is not None:
+        widths = run.args.widths
     seeds = range(cfg["training_seeds"]) if isinstance(cfg["training_seeds"], int) else cfg["training_seeds"]
+    if run.args.seeds is not None:
+        seeds = range(run.args.seeds)
     datasets = [loader(run, "fit", n, s).dataset for n, s in conditions(run.cfg) if n in run.cfg["corruptions"]["observed"]]
     batch_size = run.cfg.get("runtime", {}).get("batch_size", 32)
-    fit = DataLoader(ConcatDataset(datasets), batch_size=batch_size, shuffle=True, generator=torch.Generator().manual_seed(0))
+    runtime = run.cfg.get("runtime", {})
+    fit = DataLoader(ConcatDataset(datasets), batch_size=batch_size, shuffle=True, generator=torch.Generator().manual_seed(0),
+                     num_workers=runtime.get("num_workers", 0), pin_memory=runtime.get("pin_memory", False) and run.device.type == "cuda")
     costs, frames = [], {"val": [], "test": []}
     grid = list(product(layers, widths, seeds))
     for layer, width, seed in tqdm(grid, desc="adapters"):
