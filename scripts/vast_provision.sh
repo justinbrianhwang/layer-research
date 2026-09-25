@@ -42,7 +42,7 @@ echo "[vast] bootstrapping repo on instance"
 $SSH 'set -e; cd /workspace 2>/dev/null || cd ~; \
   if [ ! -d layer-research ]; then git clone -q https://github.com/justinbrianhwang/layer-research.git; fi; \
   cd layer-research && git pull -q && \
-  pip install -q -e . "timm>=1.0" imagecorruptions scikit-image scikit-learn opencv-python-headless pandas pyarrow pyyaml tqdm "setuptools<81" && \
+  pip install -q -e . "timm>=1.0" imagecorruptions scikit-image scikit-learn pandas pyarrow pyyaml tqdm "setuptools<81" && pip uninstall -y -q opencv-python opencv-python-headless && pip install -q "opencv-python-headless<5" && \
   python -c "import torch;print(\"cuda\", torch.cuda.is_available(), torch.cuda.get_device_name(0))" && \
   nvidia-smi --query-gpu=name,memory.total --format=csv'
 echo "[vast] ready. instance $IID  ($SSH)"
