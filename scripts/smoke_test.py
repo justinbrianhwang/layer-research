@@ -37,7 +37,8 @@ def main():
             frame = pd.read_parquet(path / "results" / (stem + ".parquet"))
             if len(frame) != count:
                 raise AssertionError(f"{stem}: expected {count} rows, got {len(frame)}")
-            if not (path / "results" / (stem + ".csv")).exists():
+            # Raw patching outputs are Parquet-only (T05b); small tables keep a CSV copy.
+            if not stem.startswith("raw/") and not (path / "results" / (stem + ".csv")).exists():
                 raise AssertionError(f"Missing CSV for {stem}")
             print(f"Verified {stem}: {count} rows")
         succeeded = True
