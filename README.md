@@ -32,7 +32,7 @@ test data is touched; a small learned adapter is then trained at that block with
 | E1 | Representation change vs. partial-patch recovery | running on Vast.ai RTX 3090 (12 layers × 4 budgets × 20 mask seeds × 12 corruption conditions, val + test) | 2026-09-25 |
 | E2 | Budget dependence of site ranking | pending | |
 | E3 | Generalization to unseen corruptions | computed together with E1 (contrast, JPEG held out) | 2026-09-25 |
-| E4 | Diagnostic patching vs. learned adapter | pending | |
+| E4 | Diagnostic patching vs. learned adapter | adapter reference (12 sites × width 32 × 3 seeds) training on the same GPU in parallel | 2026-09-25 |
 | E5 | ResNet re-validation | pending | |
 | E6 | Extended metrics (task sensitivity, kNN, TDA) | optional | |
 
