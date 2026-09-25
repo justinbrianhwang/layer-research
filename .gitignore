@@ -8,7 +8,7 @@ vast ai keys.txt
 __pycache__/
 *.pyc
 .pytest_cache/
-.pytest_tmp/
+.pytest_tmp*/
 *.egg-info/
 build/
 dist/
