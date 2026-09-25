@@ -49,6 +49,15 @@ adapter:
   lambda_clean: 1.0
   training_seeds: 3
   zero_init_output: true
+  lr: 0.001
+  weight_decay: 0.01
+  steps: 1000
+  amp: false
+  lr_schedule: constant
+
+runtime:
+  batch_size: 32
+  threads: 4
 
 evaluation:
   primary: unseen_mean_accuracy_gain
