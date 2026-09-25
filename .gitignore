@@ -1,0 +1,30 @@
+# secrets — never commit
+vast ai keys.txt
+*.key
+.env
+.vast_instance.json
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# data / caches / results (large; regenerated)
+data/
+cache/
+outputs/
+results/raw/
+*.pt
+*.pth
+*.npy
+*.npz
+*.safetensors
+
+# tooling
+.codex/
+.claude/
+.vscode/
+.idea/
