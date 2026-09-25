@@ -24,8 +24,7 @@ def main():
             cached = caches[l]
             if cached["image_ids"][offset:offset+len(ids)] != list(ids):
                 raise ValueError("Cache must contain at least the requested aligned images")
-            if cached["tokens"].dtype != torch.float16:
-                raise ValueError("Precision check requires a float16 cache")
+            # Any cached dtype is compared against the fp32 recomputation; fp32 caches should give ~0.
             for q in run.cfg["patching"]["channel_fractions"]:
                 mask, _ = make_channel_mask(cached["tokens"].shape[-1], MaskSpec("random_fixed", q, 0))
                 args = (run.model, l, corr.to(run.device))
@@ -34,6 +33,7 @@ def main():
                 rows.append(dict(layer_id=l, fraction=q, n_images=len(ids), max_abs_diff=(a-b).abs().max().item()))
         offset += len(ids)
     df = pd.DataFrame(rows).groupby(["layer_id", "fraction"], as_index=False).agg(n_images=("n_images", "sum"), max_abs_diff=("max_abs_diff", "max"))
+    df["cache_dtype"] = str(next(iter(caches.values()))["tokens"].dtype)
     table(df, run.paths.tables / "tokens_precision", run)
     print(df.to_string(index=False))
     run.finish()
