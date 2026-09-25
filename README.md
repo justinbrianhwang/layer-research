@@ -181,8 +181,69 @@ reviews and owns all commits.
 
 ## Results
 
-*No experimental results yet. This section is updated after each experiment, with tables rather
-than prose, and with the date and commit of the run.*
+Results are appended as experiments finish, newest last. Generated-corruption evaluation on ImageNetV2
+(see [Data protocol](#data-protocol)); these are not official ImageNet-C numbers.
+
+### Experiment A: layer-wise representation change (done, 2026-09-25)
+
+Score split (2 000 ImageNetV2 images, 2 per class), CLS-token summary, severity 3, DeiT-S/16 with
+fp32 activations. Full table for all severities, both summaries and every metric:
+[`results/tables/metrics_score.csv`](results/tables/metrics_score.csv).
+
+**Relative distance** $\|h_l(x)-h_l(	ilde x)\| / \|h_l(x)\|$ grows monotonically with depth for every corruption,
+so "largest change" always points at the last block.
+
+| block | gaussian_noise | defocus_blur | contrast | jpeg_compression |
+|---|---|---|---|---|
+| 0 | 0.033 | 0.027 | 0.043 | 0.008 |
+| 1 | 0.064 | 0.069 | 0.064 | 0.026 |
+| 2 | 0.088 | 0.104 | 0.085 | 0.065 |
+| 3 | 0.104 | 0.126 | 0.091 | 0.119 |
+| 4 | 0.123 | 0.155 | 0.099 | 0.133 |
+| 5 | 0.159 | 0.202 | 0.110 | 0.177 |
+| 6 | 0.213 | 0.270 | 0.130 | 0.230 |
+| 7 | 0.277 | 0.350 | 0.167 | 0.290 |
+| 8 | 0.370 | 0.474 | 0.215 | 0.380 |
+| 9 | 0.477 | 0.611 | 0.269 | 0.483 |
+| 10 | 0.504 | 0.636 | 0.329 | 0.489 |
+| 11 | 0.649 | 0.777 | 0.452 | 0.593 |
+
+**1 − linear CKA** does not: for contrast it is largest in the first two blocks and smallest around block 6,
+while for blur and noise it is largest at the end. The two metrics therefore disagree on *where* the
+representation changes most, which is exactly the ambiguity the selection experiments are meant to resolve.
+
+| block | gaussian_noise | defocus_blur | contrast | jpeg_compression |
+|---|---|---|---|---|
+| 0 | 0.097 | 0.230 | 0.328 | 0.006 |
+| 1 | 0.193 | 0.232 | 0.293 | 0.046 |
+| 2 | 0.240 | 0.189 | 0.197 | 0.165 |
+| 3 | 0.226 | 0.201 | 0.153 | 0.208 |
+| 4 | 0.216 | 0.202 | 0.130 | 0.204 |
+| 5 | 0.206 | 0.208 | 0.105 | 0.169 |
+| 6 | 0.213 | 0.232 | 0.090 | 0.161 |
+| 7 | 0.240 | 0.287 | 0.108 | 0.197 |
+| 8 | 0.293 | 0.357 | 0.121 | 0.254 |
+| 9 | 0.308 | 0.428 | 0.115 | 0.275 |
+| 10 | 0.295 | 0.465 | 0.149 | 0.253 |
+| 11 | 0.370 | 0.556 | 0.258 | 0.316 |
+
+**kNN preservation** (10-NN Jaccard between clean and corrupted neighbourhoods; higher is more stable):
+
+| block | gaussian_noise | defocus_blur | contrast | jpeg_compression |
+|---|---|---|---|---|
+| 0 | 0.191 | 0.189 | 0.108 | 0.571 |
+| 1 | 0.199 | 0.204 | 0.219 | 0.450 |
+| 2 | 0.172 | 0.216 | 0.277 | 0.279 |
+| 3 | 0.189 | 0.223 | 0.295 | 0.247 |
+| 4 | 0.182 | 0.209 | 0.313 | 0.230 |
+| 5 | 0.198 | 0.201 | 0.360 | 0.246 |
+| 6 | 0.198 | 0.185 | 0.368 | 0.262 |
+| 7 | 0.204 | 0.166 | 0.370 | 0.256 |
+| 8 | 0.195 | 0.146 | 0.349 | 0.237 |
+| 9 | 0.208 | 0.133 | 0.362 | 0.238 |
+| 10 | 0.211 | 0.137 | 0.333 | 0.255 |
+| 11 | 0.161 | 0.107 | 0.235 | 0.198 |
+
 
 ## Reproducibility
 
