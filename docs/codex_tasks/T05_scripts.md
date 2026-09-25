@@ -16,7 +16,10 @@ Scripts must work on CPU with `--limit N` (tiny smoke run) and on CUDA for the r
 
 - Downloads `imagenetv2-matched-frequency.tar.gz` from
   `https://huggingface.co/datasets/vaishaal/ImageNetV2/resolve/main/imagenetv2-matched-frequency.tar.gz`
-  into `data/` (skip if present, verify size > 1 GB), extracts to `data/imagenetv2/`.
+  into `data/` (skip if present, verify size == 1264079360 bytes). NOTE: despite the `.gz` name the file is a
+  plain POSIX/pax tar (magic `PaxH`); open with `tarfile.open(path, 'r:*')`. Extract into `data/`, which yields
+  `data/imagenetv2-matched-frequency-format-val/<class_idx>/<file>.jpeg` (1000 folders x 10 images). Set
+  `data.root` in the config to that folder. A local copy already exists on the dev machine; do not re-download if present.
 - Builds `records = [(path, label, image_id)]` where label = int(folder name), image_id = `f"{label}_{filename_stem}"`.
 - Calls `data_protocol.make_splits` with the config's split settings and writes `configs/splits_seed{seed}.json`
   (only if it does not exist; refuse to overwrite silently).
