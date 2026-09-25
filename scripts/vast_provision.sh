@@ -37,6 +37,11 @@ EOF
 HOST=$(echo "$SSH_URL" | sed -E 's#ssh://([^:]+):([0-9]+)#\1#'); PORT=$(echo "$SSH_URL" | sed -E 's#ssh://([^:]+):([0-9]+)#\2#')
 SSH="ssh -o StrictHostKeyChecking=no -o ConnectTimeout=20 -p $PORT $HOST"
 for i in $(seq 1 30); do $SSH true 2>/dev/null && break; sleep 10; done
+# Some hosts have no outbound internet; fail fast so the caller can destroy and exclude the machine.
+if ! $SSH "curl -sS -o /dev/null -m 20 https://github.com && curl -sS -o /dev/null -m 20 https://huggingface.co"; then
+  MID=$("$VAST" show instance "$IID" --raw | python -c "import sys,json; print(json.load(sys.stdin).get('machine_id'))")
+  echo "[vast] NO OUTBOUND INTERNET on instance $IID (machine $MID); destroying"; "$VAST" destroy instance -y "$IID"; rm -f .vast_instance.json; echo "EXCLUDE_MACHINE=$MID"; exit 3
+fi
 
 echo "[vast] bootstrapping repo on instance"
 $SSH 'set -e; cd /workspace 2>/dev/null || cd ~; \
