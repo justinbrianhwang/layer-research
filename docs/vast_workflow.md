@@ -27,7 +27,7 @@ $VAST destroy instance <INSTANCE_ID>     # ALWAYS destroy when done; billing is 
 ```bash
 git clone https://github.com/justinbrianhwang/layer-research.git && cd layer-research
 pip install -e . timm imagecorruptions scikit-learn pandas pyyaml tqdm
-# data: ImageNet val 50k (6.4 GB) into data/imagenet/val, ImageNet-C subsets into data/imagenet-c
+python scripts/download_data.py --config configs/deit_small.yaml   # ImageNetV2, ~1.2 GB, see docs/data_plan.md
 python scripts/cache_features.py --config configs/deit_small.yaml
 python scripts/run_patching.py   --config configs/deit_small.yaml --experiment E1
 ```
@@ -35,7 +35,11 @@ python scripts/run_patching.py   --config configs/deit_small.yaml --experiment E
 Results are written to `results/` and synced back with `scp`/`rsync`; raw tensors stay on the
 instance and only tables (`.csv`/`.parquet`) come home.
 
-## Data plan (deviation from proposal §6.3, recorded on purpose)
+## Data plan
+
+Superseded by `docs/data_plan.md` (ImageNetV2 clean images + generated corruptions). Original note kept below for history.
+
+### Earlier note (ImageNet val idea)
 
 The proposal recommends carving fit/score/val splits from ImageNet **train**. Train is ~140 GB
 and impractical on an hourly instance. We instead split the 50k ImageNet **validation** images
