@@ -54,3 +54,15 @@ __all__ += [
     "paired_bootstrap", "bootstrap_layer_gain", "bootstrap_regret", "seed_variability",
     "selection_stability", "holm_correction",
 ]
+
+from .adapter_training import (
+    BottleneckAdapter, AdaptTrainConfig, TrainResult, attach_adapter,
+    count_trainable, check_only_adapter_trainable, train_adapter, evaluate_adapter,
+    train_selected_site, train_all_sites,
+)
+
+__all__ += [
+    "BottleneckAdapter", "AdaptTrainConfig", "TrainResult", "attach_adapter",
+    "count_trainable", "check_only_adapter_trainable", "train_adapter", "evaluate_adapter",
+    "train_selected_site", "train_all_sites",
+]
