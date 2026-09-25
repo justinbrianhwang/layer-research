@@ -32,3 +32,25 @@ __all__ += [
     "MaskSpec", "InterventionType", "make_channel_mask", "nested_masks", "Patcher",
     "run_patched_forward", "sweep_layers_budgets",
 ]
+
+from .evaluation import (
+    accuracy_gain_pp, recovery_and_new_error, margin_change, clean_accuracy_change_pp,
+    layer_effect_table, aggregate_over_seeds, regret, equivalence_set,
+)
+from .site_selection import (
+    Selection, select_fixed, select_random, select_by_metric, select_val_sweep,
+    select_small_search, apply_admissibility, rank_correlation,
+)
+from .statistics import (
+    paired_bootstrap, bootstrap_layer_gain, bootstrap_regret, seed_variability,
+    selection_stability, holm_correction,
+)
+
+__all__ += [
+    "accuracy_gain_pp", "recovery_and_new_error", "margin_change", "clean_accuracy_change_pp",
+    "layer_effect_table", "aggregate_over_seeds", "regret", "equivalence_set",
+    "Selection", "select_fixed", "select_random", "select_by_metric", "select_val_sweep",
+    "select_small_search", "apply_admissibility", "rank_correlation",
+    "paired_bootstrap", "bootstrap_layer_gain", "bootstrap_regret", "seed_variability",
+    "selection_stability", "holm_correction",
+]
