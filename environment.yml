@@ -12,8 +12,11 @@ dependencies:
   - pytest
   - matplotlib
   - pip:
+      - --index-url https://download.pytorch.org/whl/cpu
+      - --extra-index-url https://pypi.org/simple
       - torch>=2.3
       - torchvision
+      - setuptools<81   # imagecorruptions still imports pkg_resources
       - timm>=1.0
       - imagecorruptions
       - wand
