@@ -27,7 +27,8 @@ test data is touched; a small learned adapter is then trained at that block with
 | T01 | `data_protocol`, `feature_extractor`, `representation_metrics` + tests | done (15 tests) | 2026-09-25 |
 | T02 | `patching_engine` + controls (proposal §8.5) | done (30 tests) | 2026-09-25 |
 | T03 | `evaluation`, `statistics`, `site_selection` | done (9 tests; 54 total) | 2026-09-25 |
-| T04 | `adapter_training` | in progress (Codex) | 2026-09-25 |
+| T04 | `adapter_training` | done (9 tests; 63 total) | 2026-09-25 |
+| T05 | experiment scripts + CPU smoke run | in progress (Codex) | 2026-09-25 |
 | E1 | Representation change vs. partial-patch recovery | pending | |
 | E2 | Budget dependence of site ranking | pending | |
 | E3 | Generalization to unseen corruptions | pending | |
