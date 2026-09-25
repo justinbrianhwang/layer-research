@@ -14,7 +14,8 @@ def main():
     p = parser(__doc__)
     p.add_argument("--site", type=int)
     p.add_argument("--widths", type=lambda s: [int(v) for v in s.split(",")])
-    p.add_argument("--seeds", type=int)
+    p.add_argument("--seeds", type=lambda s: [int(v) for v in s.split(",")] if "," in s else int(s),
+                   help="count (0..N-1) or an explicit comma-separated list")
     run = Run(p.parse_args(), "train_adapters")
     cfg = run.cfg["adapter"]
     layers = [run.args.site] if run.args.site is not None else run.cfg["representation"]["layers"]
@@ -23,7 +24,7 @@ def main():
         widths = run.args.widths
     seeds = range(cfg["training_seeds"]) if isinstance(cfg["training_seeds"], int) else cfg["training_seeds"]
     if run.args.seeds is not None:
-        seeds = range(run.args.seeds)
+        seeds = run.args.seeds if isinstance(run.args.seeds, list) else range(run.args.seeds)
     datasets = [loader(run, "fit", n, s).dataset for n, s in conditions(run.cfg) if n in run.cfg["corruptions"]["observed"]]
     batch_size = run.cfg.get("runtime", {}).get("batch_size", 32)
     runtime = run.cfg.get("runtime", {})
