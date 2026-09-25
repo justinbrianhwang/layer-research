@@ -22,3 +22,13 @@ __all__ = [
     "cosine_distance", "linear_cka", "one_minus_cka", "amplification_ratio",
     "knn_preservation", "layerwise_scores",
 ]
+
+from .patching_engine import (
+    MaskSpec, InterventionType, make_channel_mask, nested_masks, Patcher,
+    run_patched_forward, sweep_layers_budgets,
+)
+
+__all__ += [
+    "MaskSpec", "InterventionType", "make_channel_mask", "nested_masks", "Patcher",
+    "run_patched_forward", "sweep_layers_budgets",
+]
