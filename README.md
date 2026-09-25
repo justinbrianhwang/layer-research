@@ -32,7 +32,7 @@ test data is touched; a small learned adapter is then trained at that block with
 | E1 | Representation change vs. partial-patch recovery | running on Vast.ai RTX 3090 (12 layers × 4 budgets × 20 mask seeds × 12 corruption conditions, val + test) | 2026-09-25 |
 | E2 | Budget dependence of site ranking | pending | |
 | E3 | Generalization to unseen corruptions | computed together with E1 (contrast, JPEG held out) | 2026-09-25 |
-| E4 | Diagnostic patching vs. learned adapter | adapter reference (12 sites × width 32 × 3 seeds) training on the same GPU in parallel | 2026-09-25 |
+| E4 | Diagnostic patching vs. learned adapter | adapter reference seed 0 done (12 sites, width 32); seeds 1 and 2 training | 2026-09-25 |
 | E5 | ResNet re-validation | pending | |
 | E6 | Extended metrics (task sensitivity, kNN, TDA) | optional | |
 
@@ -244,6 +244,44 @@ representation changes most, which is exactly the ambiguity the selection experi
 | 10 | 0.211 | 0.137 | 0.333 | 0.255 |
 | 11 | 0.161 | 0.107 | 0.235 | 0.198 |
 
+
+
+### Experiment D, exhaustive adapter reference, seed 0 (partial, 2026-09-25)
+
+One zero-initialised bottleneck adapter (width 32, 25 760 parameters) trained after each of the 12 blocks
+on the fit split with observed corruptions only (Gaussian noise, defocus blur; severities 1/3/5),
+1 000 AdamW updates, batch 32, $\lambda_{\mathrm{clean}}=1$, backbone frozen. Accuracy change in
+percentage points on the **test split** relative to the un-adapted model (baseline accuracy: observed
+corruptions 45.6 %, unseen 58.4 %). Seeds 1 and 2 are still training; the
+validation-split table and per-site costs are in `results/tables/` and `results/raw/`.
+
+| site | observed (noise+blur) | unseen (contrast+JPEG) | clean | gaussian_noise | defocus_blur | contrast | jpeg_compression |
+|---|---|---|---|---|---|---|---|
+| 0 | +5.32 | -5.20 | -2.75 | +2.98 | +7.65 | -7.43 | -2.97 |
+| 1 | +5.94 | -6.49 | -4.00 | +3.12 | +8.77 | -8.25 | -4.73 |
+| 2 | +6.30 | -6.09 | -3.65 | +3.25 | +9.35 | -6.58 | -5.60 |
+| 3 | +5.17 | -4.21 | -3.50 | +2.08 | +8.25 | -4.42 | -4.00 |
+| 4 | +4.41 | -1.92 | -3.45 | +1.62 | +7.20 | -3.17 | -0.67 |
+| 5 | +2.37 | -1.35 | -3.60 | -0.60 | +5.35 | -1.53 | -1.17 |
+| 6 | +1.04 | -1.16 | -2.90 | -1.60 | +3.68 | -1.30 | -1.02 |
+| 7 | +1.23 | -0.82 | -2.90 | -0.68 | +3.15 | -0.77 | -0.88 |
+| 8 | +0.82 | -0.24 | -2.40 | -0.97 | +2.62 | +0.07 | -0.55 |
+| 9 | +0.05 | -0.04 | -1.40 | -1.30 | +1.40 | +0.10 | -0.18 |
+| 10 | +0.73 | +0.74 | -1.15 | -0.22 | +1.68 | +0.67 | +0.82 |
+| 11 | +0.02 | -0.81 | -1.50 | -1.08 | +1.12 | -0.70 | -0.92 |
+
+Reading of the seed-0 table, to be confirmed with the remaining seeds and the diagnostic patching sweep:
+
+- The site that repairs *observed* corruptions best (blocks 1 to 2, driven by defocus blur) is the site
+  that hurts *unseen* corruptions most and costs the most clean accuracy. Front sites learn a
+  blur-specific correction that does not transfer.
+- Late sites (block 10) give small gains that are non-negative on every corruption family and lose
+  the least clean accuracy.
+- No site satisfies a clean-drop tolerance of 0.5 pp under this training recipe, so an admissibility
+  rule with that tolerance selects *no intervention*; a looser tolerance or a larger clean weight would be
+  needed for any adapter to be admissible. This is reported as is, not tuned on the test split.
+- Training cost falls monotonically with depth (a block-0 adapter needs about 1.9× the training FLOPs
+  of a block-11 adapter) because gradients must flow through every downstream block.
 
 ## Reproducibility
 
