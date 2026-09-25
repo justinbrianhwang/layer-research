@@ -10,7 +10,8 @@ model:
   dtype: float32                       # patching results compared at fp32; fp16 only for caching if verified
 
 data:
-  root: data/imagenet/val               # 50k ImageNet val images, split by original image id
+  root: data/imagenetv2                 # ImageNetV2 matched-frequency, 10 imgs/class; see docs/data_plan.md
+  source: imagenetv2_matched_frequency
   split_file: configs/splits_seed0.json
   split:
     fit_frac: 0.40
@@ -19,7 +20,7 @@ data:
     test_frac: 0.20
     seed: 0
     class_balanced: true
-  preliminary_subset_per_class: 10      # class-balanced subset for early runs; full set later
+  preliminary_subset_per_class: null    # ImageNetV2 already is 10/class; set to reduce further for smoke runs
 
 corruptions:
   observed: [gaussian_noise, defocus_blur]
