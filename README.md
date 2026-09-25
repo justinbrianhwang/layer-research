@@ -32,7 +32,7 @@ test data is touched; a small learned adapter is then trained at that block with
 | E1 | Representation change vs. partial-patch recovery | val sweep done (12.4 h on RTX 3090), 64 selector/budget choices frozen in `results/tables/selections.csv`; test sweep running | 2026-09-25 |
 | E2 | Budget dependence of site ranking | pending | |
 | E3 | Generalization to unseen corruptions | computed together with E1 (contrast, JPEG held out) | 2026-09-25 |
-| E4 | Diagnostic patching vs. learned adapter | adapter reference seed 0 done (12 sites, width 32); seeds 1 and 2 training | 2026-09-25 |
+| E4 | Diagnostic patching vs. learned adapter | adapter reference done (12 sites × width 32 × 3 seeds); diagnostic-vs-adapter comparison pending test sweep | 2026-09-26 |
 | E5 | ResNet re-validation | pending | |
 | E6 | Extended metrics (task sensitivity, kNN, TDA) | optional | |
 
@@ -246,42 +246,53 @@ representation changes most, which is exactly the ambiguity the selection experi
 
 
 
-### Experiment D, exhaustive adapter reference, seed 0 (partial, 2026-09-25)
+### Experiment D: exhaustive adapter reference, 3 training seeds (done, 2026-09-26)
 
 One zero-initialised bottleneck adapter (width 32, 25 760 parameters) trained after each of the 12 blocks
 on the fit split with observed corruptions only (Gaussian noise, defocus blur; severities 1/3/5),
-1 000 AdamW updates, batch 32, $\lambda_{\mathrm{clean}}=1$, backbone frozen. Accuracy change in
-percentage points on the **test split** relative to the un-adapted model (baseline accuracy: observed
-corruptions 45.6 %, unseen 58.4 %). Seeds 1 and 2 are still training; the
-validation-split table and per-site costs are in `results/tables/` and `results/raw/`.
+1 000 AdamW updates, batch 32, $\lambda_{\mathrm{clean}}=1$, backbone frozen, three training seeds per
+site. Accuracy change in percentage points on the **test split** relative to the un-adapted model
+(baseline accuracy: observed corruptions 45.6 %, unseen 58.4 %), mean ± std over seeds; per-corruption
+columns are seed means. Tables: `results/tables/E4_adapter_test_by_site_3seeds.csv`,
+`results/tables/E4_adapter_test_by_site_corruption_3seeds.csv`, costs in `results/tables/adapter_costs.csv`.
 
 | site | observed (noise+blur) | unseen (contrast+JPEG) | clean | gaussian_noise | defocus_blur | contrast | jpeg_compression |
 |---|---|---|---|---|---|---|---|
-| 0 | +5.32 | -5.20 | -2.75 | +2.98 | +7.65 | -7.43 | -2.97 |
-| 1 | +5.94 | -6.49 | -4.00 | +3.12 | +8.77 | -8.25 | -4.73 |
-| 2 | +6.30 | -6.09 | -3.65 | +3.25 | +9.35 | -6.58 | -5.60 |
-| 3 | +5.17 | -4.21 | -3.50 | +2.08 | +8.25 | -4.42 | -4.00 |
-| 4 | +4.41 | -1.92 | -3.45 | +1.62 | +7.20 | -3.17 | -0.67 |
-| 5 | +2.37 | -1.35 | -3.60 | -0.60 | +5.35 | -1.53 | -1.17 |
-| 6 | +1.04 | -1.16 | -2.90 | -1.60 | +3.68 | -1.30 | -1.02 |
-| 7 | +1.23 | -0.82 | -2.90 | -0.68 | +3.15 | -0.77 | -0.88 |
-| 8 | +0.82 | -0.24 | -2.40 | -0.97 | +2.62 | +0.07 | -0.55 |
-| 9 | +0.05 | -0.04 | -1.40 | -1.30 | +1.40 | +0.10 | -0.18 |
-| 10 | +0.73 | +0.74 | -1.15 | -0.22 | +1.68 | +0.67 | +0.82 |
-| 11 | +0.02 | -0.81 | -1.50 | -1.08 | +1.12 | -0.70 | -0.92 |
+| 0 | +4.93 ± 0.41 | -5.95 ± 0.80 | -2.95 ± 0.18 | +2.72 | +7.14 | -8.08 | -3.82 |
+| 1 | +6.10 ± 0.15 | -6.72 ± 0.54 | -3.33 ± 0.73 | +3.38 | +8.83 | -8.88 | -4.56 |
+| 2 | +6.20 ± 0.11 | -5.44 ± 0.57 | -3.58 ± 0.35 | +3.29 | +9.12 | -6.54 | -4.33 |
+| 3 | +5.18 ± 0.16 | -4.19 ± 0.33 | -3.57 ± 0.31 | +2.25 | +8.12 | -4.84 | -3.53 |
+| 4 | +4.05 ± 0.31 | -2.09 ± 0.64 | -3.00 ± 0.41 | +1.21 | +6.90 | -3.47 | -0.72 |
+| 5 | +2.38 ± 0.32 | -1.58 ± 0.61 | -3.18 ± 0.60 | -0.42 | +5.17 | -1.96 | -1.21 |
+| 6 | +1.09 ± 0.12 | -1.00 ± 0.19 | -2.88 ± 0.23 | -1.36 | +3.53 | -1.42 | -0.57 |
+| 7 | +0.89 ± 0.45 | -0.94 ± 0.11 | -3.00 ± 0.31 | -1.14 | +2.92 | -0.98 | -0.89 |
+| 8 | +0.80 ± 0.18 | -0.12 ± 0.12 | -2.50 ± 0.17 | -0.87 | +2.47 | +0.18 | -0.43 |
+| 9 | +0.40 ± 0.33 | -0.14 ± 0.09 | -1.67 ± 0.23 | -1.02 | +1.83 | +0.01 | -0.29 |
+| 10 | +0.77 ± 0.08 | +0.51 ± 0.34 | -1.33 ± 0.20 | -0.43 | +1.97 | +0.56 | +0.47 |
+| 11 | +0.22 ± 0.17 | -0.83 ± 0.07 | -1.73 ± 0.21 | -0.83 | +1.27 | -0.67 | -0.98 |
 
-Reading of the seed-0 table, to be confirmed with the remaining seeds and the diagnostic patching sweep:
+Seed variability is small (std ≤ 0.8 pp), so the pattern is stable:
 
-- The site that repairs *observed* corruptions best (blocks 1 to 2, driven by defocus blur) is the site
-  that hurts *unseen* corruptions most and costs the most clean accuracy. Front sites learn a
-  blur-specific correction that does not transfer.
-- Late sites (block 10) give small gains that are non-negative on every corruption family and lose
-  the least clean accuracy.
-- No site satisfies a clean-drop tolerance of 0.5 pp under this training recipe, so an admissibility
-  rule with that tolerance selects *no intervention*; a looser tolerance or a larger clean weight would be
-  needed for any adapter to be admissible. This is reported as is, not tuned on the test split.
-- Training cost falls monotonically with depth (a block-0 adapter needs about 1.9× the training FLOPs
-  of a block-11 adapter) because gradients must flow through every downstream block.
+- **The best observed-corruption site is the worst unseen-corruption site.** Blocks 1 to 2 gain
+  6 pp on noise + blur (driven by defocus blur, +9 pp) and lose 5 to 7 pp on contrast + JPEG and
+  3 to 4 pp of clean accuracy. Late sites (block 10) gain less than 1 pp but are the only sites that
+  are non-negative on every corruption family.
+- **The realistic selection rule is decided by the clean-accuracy tolerance, not by the metric.**
+  Selecting on the validation split with the proposal's rule (best observed gain among sites whose
+  clean drop is within $arepsilon_{\mathrm{clean}}$):
+
+| tolerance $arepsilon_{\mathrm{clean}}$ (pp) | admissible sites (val) | chosen | test observed U | test unseen U |
+|---|---|---|---|---|
+| 0.5 | none | no intervention | 0.00 | 0.00 |
+| 1.5 | 10, 11 | 10 | +0.77 | +0.51 |
+| 3.0 | 9, 10, 11 | 10 | +0.77 | +0.51 |
+| 5.0 | all but 5 | 1 | +6.10 | −6.72 |
+
+- Training cost falls monotonically with depth (a block-0 adapter needs about 1.9× the training
+  FLOPs of a block-11 adapter) because gradients must flow through every downstream block.
+- Comparison with the diagnostic patching sweep follows once the test sweep finishes; on the
+  validation split, diagnostic partial patching favours the *last* blocks (9 to 11), which is the
+  opposite end of the network from the adapter optimum on observed corruptions.
 
 ## Reproducibility
 
