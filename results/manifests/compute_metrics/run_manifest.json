@@ -1,0 +1,140 @@
+{
+  "config": {
+    "model": {
+      "name": "deit_small_patch16_224",
+      "pretrained": true,
+      "blocks_attr": "blocks",
+      "num_blocks": 12,
+      "embed_dim": 384,
+      "input_size": [
+        3,
+        224,
+        224
+      ],
+      "eval_mode": true,
+      "dtype": "float32"
+    },
+    "data": {
+      "root": "data/imagenetv2-matched-frequency-format-val",
+      "source": "imagenetv2_matched_frequency",
+      "split_file": "configs/splits_seed0.json",
+      "split": {
+        "fit_frac": 0.4,
+        "score_frac": 0.2,
+        "val_frac": 0.2,
+        "test_frac": 0.2,
+        "seed": 0,
+        "class_balanced": true
+      },
+      "preliminary_subset_per_class": null
+    },
+    "corruptions": {
+      "observed": [
+        "gaussian_noise",
+        "defocus_blur"
+      ],
+      "unseen": [
+        "contrast",
+        "jpeg_compression"
+      ],
+      "severities": [
+        1,
+        3,
+        5
+      ],
+      "corruption_seed": 1234
+    },
+    "representation": {
+      "layers": [
+        0,
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11
+      ],
+      "summary_modes": [
+        "cls",
+        "patch_mean"
+      ],
+      "metrics": [
+        "relative_distance",
+        "cosine_distance",
+        "one_minus_cka",
+        "amplification_ratio",
+        "knn_preservation"
+      ]
+    },
+    "patching": {
+      "channel_fractions": [
+        0.01,
+        0.05,
+        0.1,
+        0.2
+      ],
+      "alphas": [
+        0.25,
+        0.5,
+        1.0
+      ],
+      "default_alpha": 1.0,
+      "mask_policy": "random_fixed_nested",
+      "mask_seeds": 20,
+      "norm_cap_rho": null,
+      "controls": [
+        "no_intervention",
+        "clean_to_clean",
+        "full_state",
+        "random_direction_same_norm",
+        "shuffled_donor"
+      ]
+    },
+    "adapter": {
+      "type": "bottleneck_mlp",
+      "widths": [
+        8,
+        32,
+        64
+      ],
+      "default_width": 32,
+      "lambda_clean": 1.0,
+      "training_seeds": 3,
+      "zero_init_output": true,
+      "lr": 0.001,
+      "weight_decay": 0.01,
+      "steps": 1000,
+      "amp": false,
+      "lr_schedule": "constant"
+    },
+    "runtime": {
+      "batch_size": 128,
+      "num_workers": 8,
+      "batch_size_cuda": 128,
+      "pin_memory": true,
+      "threads": 4
+    },
+    "evaluation": {
+      "primary": "unseen_mean_accuracy_gain",
+      "tolerance_tau_pp": 0.5,
+      "clean_drop_tolerance_pp": 0.5,
+      "bootstrap_resamples": 1000,
+      "bootstrap_unit": "original_image_id"
+    }
+  },
+  "arguments": {
+    "config": "configs/deit_small.yaml",
+    "device": "cuda",
+    "limit": null
+  },
+  "git_commit": "39a958c843828e521cba569ef58ba6fffc92b426",
+  "model_fingerprint": "274f49f21a03df6f7da7f330fed2fe31ff1b6bdd1be8fc9ce8088bf297fdd4e6",
+  "started_at": "2026-09-25T23:21:11.778737+00:00",
+  "finished_at": "2026-09-25T23:35:28.368785+00:00",
+  "elapsed_seconds": 856.5900656627491
+}
