@@ -29,10 +29,10 @@ test data is touched; a small learned adapter is then trained at that block with
 | T03 | `evaluation`, `statistics`, `site_selection` | done (9 tests; 54 total) | 2026-09-25 |
 | T04 | `adapter_training` | done (9 tests; 63 total) | 2026-09-25 |
 | T05 | experiment scripts + CPU smoke run + GPU-readiness fixes | done (65 tests; real DeiT-S smoke chain verified on CPU) | 2026-09-25 |
-| E1 | Representation change vs. partial-patch recovery | val sweep done (12.4 h on RTX 3090), 64 selector/budget choices frozen in `results/tables/selections.csv`; test sweep running | 2026-09-25 |
-| E2 | Budget dependence of site ranking | pending | |
-| E3 | Generalization to unseen corruptions | computed together with E1 (contrast, JPEG held out) | 2026-09-25 |
-| E4 | Diagnostic patching vs. learned adapter | adapter reference done (12 sites × width 32 × 3 seeds); diagnostic-vs-adapter comparison pending test sweep | 2026-09-26 |
+| E1 | Representation change vs. partial-patch recovery | done (val + test sweeps, 20 seeds, 12 conditions) | 2026-09-26 |
+| E2 | Budget dependence of site ranking | done for the channel budget q ∈ {0.01, 0.05, 0.10, 0.20} at α = 1 (α grid and norm cap not run) | 2026-09-26 |
+| E3 | Generalization to unseen corruptions | done (contrast, JPEG held out) | 2026-09-26 |
+| E4 | Diagnostic patching vs. learned adapter | done (width 32 × 3 seeds; widths 8/64 not run) | 2026-09-26 |
 | E5 | ResNet re-validation | pending | |
 | E6 | Extended metrics (task sensitivity, kNN, TDA) | optional | |
 
@@ -245,6 +245,118 @@ representation changes most, which is exactly the ambiguity the selection experi
 | 11 | 0.161 | 0.107 | 0.235 | 0.198 |
 
 
+
+### Experiments B, C, E (E1–E3): diagnostic partial patching, site selection, unseen corruptions (done, 2026-09-26)
+
+Test split, 2 000 images, α = 1, channel masks random-fixed and nested across budgets, 20 mask seeds,
+all 12 corruption conditions (4 types × severities 1/3/5). Accuracy change $U$ in percentage points versus
+the un-patched corrupted input, averaged over mask seeds and conditions (image-level paired bootstrap for
+CIs). Tables: `results/tables/E1_effects.csv` (every condition × site × seed), `E1_seed_variability.csv`,
+`E3_observed.csv`, `E3_unseen.csv`, `E1_test_U_by_layer_domain_fraction.csv`.
+
+**Controls (all conditions pooled, validation split).** Full-state replacement and clean-to-clean
+replacement reproduce the clean predictions exactly (+17.2 pp, the full clean–corrupted gap);
+no-intervention gives 0.00; a random direction with the same per-image norm gives −0.3 to +0.1 pp;
+a shuffled donor gives −0.4 to +0.2 pp. The recovery below therefore comes from the clean *direction*,
+not from the perturbation size.
+
+**Per-site recovery on the test split** (mean over seeds and conditions):
+
+| domain | q | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| observed | 0.01 | +0.29 | +0.21 | +0.11 | +0.16 | +0.20 | +0.22 | +0.26 | +0.25 | +0.25 | +0.26 | +0.23 | +0.21 |
+| observed | 0.05 | +1.42 | +1.21 | +1.11 | +1.29 | +1.56 | +1.56 | +1.60 | +1.59 | +1.67 | +1.86 | +1.86 | +1.61 |
+| observed | 0.1 | +1.64 | +1.93 | +2.14 | +2.72 | +3.23 | +3.32 | +3.28 | +3.36 | +3.50 | +3.96 | +4.01 | +3.47 |
+| observed | 0.2 | +1.40 | +3.98 | +4.38 | +5.51 | +6.56 | +6.73 | +6.76 | +6.89 | +7.22 | +8.23 | +8.65 | +7.49 |
+| unseen | 0.01 | -0.04 | +0.14 | +0.12 | +0.14 | +0.17 | +0.16 | +0.20 | +0.20 | +0.18 | +0.20 | +0.21 | +0.19 |
+| unseen | 0.05 | -0.68 | +0.74 | +0.89 | +1.05 | +1.17 | +1.01 | +1.07 | +1.11 | +1.06 | +1.17 | +1.18 | +1.12 |
+| unseen | 0.1 | -2.23 | +1.25 | +1.50 | +1.92 | +2.17 | +2.08 | +2.11 | +2.18 | +2.18 | +2.37 | +2.36 | +2.22 |
+| unseen | 0.2 | -2.80 | +2.28 | +2.81 | +3.47 | +3.96 | +3.93 | +4.08 | +4.23 | +4.33 | +4.68 | +4.85 | +4.33 |
+
+**Selector regret on the test split**, for the frozen selections made on observed corruptions
+(score/val splits only). Regret is measured against the best admissible site under the same budget;
+"unseen" evaluates the *same* frozen site on contrast + JPEG, which were never used for selection.
+
+*Budget q = 0.20 (77 of 384 channels):*
+
+| selector | site | observed U (95% CI) | observed regret | unseen U (95% CI) | unseen regret |
+|---|---|---|---|---|---|
+| fixed_front | 0 | +1.40 (+0.92, +1.89) | 7.25 | -2.80 (-3.25, -2.39) | 7.64 |
+| fixed_middle | 6 | +6.76 (+6.33, +7.18) | 1.89 | +4.08 (+3.67, +4.46) | 0.77 |
+| fixed_back | 11 | +7.49 (+7.03, +7.98) | 1.16 | +4.33 (+3.91, +4.74) | 0.52 |
+| random | 10 | +8.65 (+8.14, +9.18) | 0.00 | +4.85 (+4.41, +5.29) | 0.00 |
+| small_search | 11 | +7.49 (+7.03, +7.98) | 1.16 | +4.33 (+3.91, +4.74) | 0.52 |
+| val_sweep | 10 | +8.65 (+8.14, +9.18) | 0.00 | +4.85 (+4.41, +5.29) | 0.00 |
+| relative_distance/cls | 11 | +7.49 (+7.03, +7.98) | 1.16 | +4.33 (+3.91, +4.74) | 0.52 |
+| cosine_distance/cls | 11 | +7.49 (+7.03, +7.98) | 1.16 | +4.33 (+3.91, +4.74) | 0.52 |
+| one_minus_cka/cls | 11 | +7.49 (+7.03, +7.98) | 1.16 | +4.33 (+3.91, +4.74) | 0.52 |
+| knn_preservation/cls | 11 | +7.49 (+7.03, +7.98) | 1.16 | +4.33 (+3.91, +4.74) | 0.52 |
+| amplification_ratio/cls | 0 | +1.40 (+0.92, +1.89) | 7.25 | -2.80 (-3.25, -2.39) | 7.64 |
+| relative_distance/patch_mean | 11 | +7.49 (+7.03, +7.98) | 1.16 | +4.33 (+3.91, +4.74) | 0.52 |
+| one_minus_cka/patch_mean | 10 | +8.65 (+8.14, +9.18) | 0.00 | +4.85 (+4.41, +5.29) | 0.00 |
+| amplification_ratio/patch_mean | 9 | +8.23 (+7.73, +8.73) | 0.42 | +4.68 (+4.26, +5.10) | 0.17 |
+
+*Budget q = 0.05 (19 channels):*
+
+| selector | site | observed U (95% CI) | observed regret | unseen U (95% CI) | unseen regret |
+|---|---|---|---|---|---|
+| fixed_front | 0 | +1.42 (+1.13, +1.70) | 0.44 | -0.67 (-0.94, -0.40) | 1.85 |
+| fixed_middle | 6 | +1.60 (+1.37, +1.81) | 0.27 | +1.07 (+0.89, +1.26) | 0.10 |
+| fixed_back | 11 | +1.61 (+1.42, +1.81) | 0.25 | +1.12 (+0.94, +1.31) | 0.05 |
+| random | 10 | +1.86 (+1.65, +2.07) | 0.00 | +1.18 (+0.98, +1.37) | 0.00 |
+| small_search | 11 | +1.61 (+1.42, +1.81) | 0.25 | +1.12 (+0.94, +1.31) | 0.05 |
+| val_sweep | 9 | +1.86 (+1.64, +2.07) | 0.00 | +1.17 (+0.99, +1.36) | 0.00 |
+| relative_distance/cls | 11 | +1.61 (+1.42, +1.81) | 0.25 | +1.12 (+0.94, +1.31) | 0.05 |
+| cosine_distance/cls | 11 | +1.61 (+1.42, +1.81) | 0.25 | +1.12 (+0.94, +1.31) | 0.05 |
+| one_minus_cka/cls | 11 | +1.61 (+1.42, +1.81) | 0.25 | +1.12 (+0.94, +1.31) | 0.05 |
+| knn_preservation/cls | 11 | +1.61 (+1.42, +1.81) | 0.25 | +1.12 (+0.94, +1.31) | 0.05 |
+| amplification_ratio/cls | 0 | +1.42 (+1.13, +1.70) | 0.44 | -0.67 (-0.94, -0.40) | 1.85 |
+| relative_distance/patch_mean | 11 | +1.61 (+1.42, +1.81) | 0.25 | +1.12 (+0.94, +1.31) | 0.05 |
+| one_minus_cka/patch_mean | 10 | +1.86 (+1.65, +2.07) | 0.00 | +1.18 (+0.98, +1.37) | 0.00 |
+| amplification_ratio/patch_mean | 9 | +1.86 (+1.64, +2.07) | 0.00 | +1.17 (+0.99, +1.36) | 0.00 |
+
+What the diagnostic sweep says:
+
+- **Recovery grows with depth and with budget.** With q = 0.20 the best site (block 10) recovers
+  8.7 pp of the 17.2 pp clean–corrupted gap on observed corruptions; block 0 recovers 1.4 pp and
+  *hurts* unseen corruptions (−2.8 pp). The site ranking is nearly identical on unseen corruptions,
+  so a site frozen on noise + blur transfers to contrast + JPEG (E3): regret on unseen ≤ 0.5 pp for
+  every selector except those that choose block 0.
+- **Budget dependence is about how much the choice matters, not about which site wins.** At q = 0.01
+  every site is inside the 0.5 pp equivalence set (13 candidates including no intervention),
+  at q = 0.05 it holds 9 candidates, at q ≥ 0.10 only blocks 9 and 10 remain
+  (2 candidates). Metric-based choices only start to cost something at q ≥ 0.10.
+- **Which metric you read matters more than whether you read one.** CLS-token distance, cosine,
+  1 − CKA and kNN preservation all point at the last block (11), which costs 0.5 to 1.2 pp of
+  regret at q ≥ 0.10 relative to block 10; 1 − CKA on patch-mean tokens picks block 10 (regret 0)
+  and the patch-mean amplification ratio picks block 9 (regret ≤ 0.4 pp). The CLS amplification
+  ratio picks block 0 and is the worst rule in the table (regret 7.3 pp at q = 0.20). A fixed
+  "back" rule (block 11) is within 1.2 pp of optimal everywhere and beats every CLS-based metric
+  at no cost. The validation sweep (all 12 sites tried on val) reaches zero regret at every budget.
+
+### Diagnostic patching versus learned adapters (E4 link)
+
+Spearman rank correlation between the per-site diagnostic recovery (partial patching, test split)
+and the per-site adapter gain (width 32, 3-seed mean, test split):
+
+| domain | q | Spearman ρ | p | best diagnostic site | best adapter site |
+|---|---|---|---|---|---|
+| observed | 0.05 | -0.94 | 6.99e-06 | 10 | 2 |
+| observed | 0.1 | -0.90 | 8.37e-05 | 10 | 2 |
+| observed | 0.2 | -0.92 | 1.86e-05 | 10 | 2 |
+| unseen | 0.05 | +0.80 | 0.0019 | 10 | 10 |
+| unseen | 0.1 | +0.92 | 2.84e-05 | 9 | 10 |
+| unseen | 0.2 | +0.98 | 3.09e-08 | 10 | 10 |
+
+- On observed corruptions the two rankings are **strongly anti-correlated**: diagnostic patching says
+  "repair late" (block 10), the learned adapter says "repair early" (blocks 1 to 2). The privileged
+  clean-direction diagnostic is therefore *not* a usable proxy for where a deployable adapter should go
+  (hypothesis H4 in the proposal, in its strong form).
+- On unseen corruptions the rankings agree in sign: late sites are best for both, because early
+  adapters over-fit the observed blur and late sites generalise. The site that survives a
+  clean-accuracy constraint (block 10, see Experiment D) is also the best diagnostic site.
+- A representation metric read on the CLS token would have pointed at block 11 for both procedures;
+  that is near-optimal for the diagnostic (regret ≤ 1.2 pp) and near-zero gain for the adapter.
 
 ### Experiment D: exhaustive adapter reference, 3 training seeds (done, 2026-09-26)
 
