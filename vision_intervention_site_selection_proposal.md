@@ -1,241 +1,241 @@
-# 표현 변화는 복구 위치를 예측하는가?
-## 제한된 개입 예산에서 비전 모델의 층 선택 신뢰성 분석
+# Does Representation Change Predict Where to Repair?
+## Reliability of Layer Selection in Vision Models under a Limited Intervention Budget
 
-**영문 제목:** From Representation Change to Repair: Budget-Constrained Intervention Site Selection in Vision Models  
-**문서 성격:** 연구 제안서 — 연구 질문, 검증 가설 및 실험 설계  
-**연구 대상:** 이미지 분류 모델의 블록별 표현과 자연적 이미지 손상 강건성  
-**문헌 확인 기준:** 2026년 9월 24일
+**English title:** From Representation Change to Repair: Budget-Constrained Intervention Site Selection in Vision Models  
+**Document type:** Research proposal — research questions, testable hypotheses, and experimental design  
+**Subject:** Block-wise representations in image classification models and robustness to natural image corruptions  
+**Literature check date:** September 24, 2026
 
-> **핵심 질문**  
-> 어떤 층별 표현 지표가 단순히 큰 표현 변화를 찾아내는 것을 넘어, 제한된 수정 예산에서 효과적인 복구 위치를 예측하며, 그 선택은 미관측 손상과 실제 학습형 보정에도 유효한가?
+> **Core question**  
+> Which layer-wise representation metrics go beyond identifying large representation changes to predict effective repair sites under a limited modification budget, and do these choices remain effective for unseen corruptions and actual learned adaptation?
 
 ---
 
-## 1. 연구 개요
+## 1. Research Overview
 
-본 연구는 비전 모델에서 관찰되는 **층별 표현 변화**와 **실제로 수정했을 때 얻는 복구 효과** 사이의 관계를 분석합니다. 깨끗한 이미지와 손상된 이미지가 모델을 통과할 때 내부 표현이 얼마나 달라지는지를 측정하고, 각 층에 동일한 규칙의 제한된 개입을 수행하여 예측 성능이 얼마나 회복되는지 비교합니다.
+This study analyzes the relationship between **layer-wise representation changes** observed in vision models and **the recovery achieved through actual modification**. We measure how internal representations differ as clean and corrupted images pass through a model, apply limited interventions using the same rule at each layer, and compare the resulting recovery in predictive performance.
 
-연구의 중심은 새로운 취약 층을 선언하는 것이 아니라, **“어디를 고쳐야 하는가”라는 의사결정에 기존 표현 지표가 얼마나 신뢰할 만한 근거를 제공하는지 검증하는 것**입니다. 층별 거리나 유사도와 복구 효과의 상관관계를 살펴보되, 최종적으로는 지표가 선택한 위치 때문에 얼마나 많은 복구 성능을 놓치는지를 평가합니다.
+The central aim is to **evaluate how reliably existing representation metrics inform the decision of “where to repair,”** rather than to declare a new vulnerable layer. We examine correlations between layer-wise distances or similarities and recovery effects, but ultimately evaluate how much recovery performance is lost because of the site selected by a metric.
 
-이를 위해 두 종류의 실험을 명확히 구분합니다. 첫 번째는 같은 이미지의 깨끗한 표현을 일부 제공하는 **진단용 부분 교체 실험**입니다. 두 번째는 깨끗한 입력을 사용할 수 없는 테스트 환경에서 작은 보정 모듈을 적용하는 **실제 학습형 복구 실험**입니다. 진단 실험에서 효과적인 위치가 실제 보정에도 유리한지 확인함으로써, 내부 표현 분석과 사용 가능한 복구 방법 사이의 연결을 검증합니다.
+To this end, we clearly distinguish two types of experiments. The first is **diagnostic partial patching**, which supplies part of the clean representation of the same image. The second is **actual learned repair**, which applies a small adapter in a test environment where clean inputs are unavailable. By testing whether effective diagnostic sites are also favorable for actual adaptation, we examine the connection between internal representation analysis and usable repair methods.
 
-초기 범위는 하나의 고정된 ViT 계열 분류 모델, 단일 블록 개입, 자연적 이미지 손상으로 제한합니다. 다른 구조로의 재검증에는 ResNet 계열 모델을 사용합니다. TDA는 필수 구성요소로 고정하지 않으며, 거리·유사도·이웃 구조 지표보다 복구 위치 선택에 추가적인 가치를 제공할 때 확장합니다.
+The initial scope is limited to one fixed ViT-family classifier, single-block interventions, and natural image corruptions. A ResNet-family model is used for validation on another architecture. TDA is not a mandatory component; it is introduced as an extension only if it provides additional value for repair site selection beyond distance, similarity, and neighborhood-structure metrics.
 
-**본 문서의 가설과 수치 설정은 실험 전 제안입니다. 성능 개선, 특정 층의 우월성, 연구의 최초성은 확정된 결과로 전제하지 않습니다.**
+**The hypotheses and numerical settings in this document are pre-experimental proposals. Performance improvements, the superiority of particular layers, and claims of research priority are not assumed to be established results.**
 
-## 2. 연구 배경과 문제의식
+## 2. Background and Motivation
 
-### 2.1 층별 표현 관찰만으로는 충분하지 않습니다
+### 2.1 Observing Layer-Wise Representations Is Insufficient
 
-신경망의 표현 유사도 비교, CNN과 ViT의 층별 구조 분석, 층을 통과하는 데이터의 위상 변화에 관한 연구는 이미 존재합니다. CKA, CNN–ViT 표현 비교, 신경망의 위상 변화 분석은 본 연구의 출발점이지 그 자체로 새로운 기여가 아닙니다. [R1], [R2], [R3]
+Prior work has compared neural representation similarity, analyzed layer-wise structures in CNNs and ViTs, and studied topological changes in data as it passes through layers. CKA, CNN–ViT representation comparisons, and analyses of topological changes in neural networks are starting points for this study, not novel contributions in themselves. [R1], [R2], [R3]
 
-강건성 측면에서도 중요한 층을 선택해 학습하는 CLAT, 위상과 Lipschitz 관점을 연결하는 TopoLip, ViT의 교란 전파를 분석하고 앞쪽 뉴런에 개입하는 NeuroShield-ViT, 자연적 손상의 강건한 계산 경로를 다루는 S&D가 제안되어 있습니다. 따라서 “층별 교란을 관찰하고 중요한 층에 개입한다”는 설명만으로는 연구의 차별성이 충분하지 않습니다. [R6], [R7], [R8], [R9]
+Robustness research has also proposed CLAT, which selects important layers for training; TopoLip, which connects topology and Lipschitz perspectives; NeuroShield-ViT, which analyzes perturbation propagation in ViTs and intervenes on early neurons; and S&D, which studies robust computational paths under natural corruptions. Thus, describing the work as “observing layer-wise perturbations and intervening at important layers” is insufficient to establish its distinctiveness. [R6], [R7], [R8], [R9]
 
-본 연구는 이러한 선행연구를 바탕으로, **관찰 지표를 개입 위치 선택의 기준으로 사용해도 되는 조건과 한계**를 구체적으로 평가합니다.
+Building on this prior work, we specifically evaluate **the conditions and limitations under which observational metrics can serve as criteria for intervention site selection**.
 
-### 2.2 구분해야 하는 세 가지 개념
+### 2.2 Three Concepts to Distinguish
 
-| 구분 | 핵심 질문 | 본 연구에서의 측정 | 해석상 제한 |
+| Concept | Core question | Measurement in this study | Interpretive limitation |
 |---|---|---|---|
-| **표현 변화** | 깨끗한 입력과 손상된 입력의 표현이 어디에서 크게 달라지는가? | 정규화 거리, cosine distance, CKA, 이웃 구조 변화 등 | 큰 변화가 곧 예측에 해로운 변화라는 뜻은 아닙니다. |
-| **예측에 대한 영향** | 정해진 내부 개입이 최종 판단을 얼마나 바꾸는가? | 정확도, 정답 margin, 손실의 개입 전후 차이 | 지정한 개입의 효과이지 유일한 고장 원인의 증명은 아닙니다. |
-| **복구 가능성** | 수정 수단과 예산을 제한했을 때 어디를 고치는 것이 효과적인가? | 예산별 부분 교체 효과와 학습형 보정 효과 | 개입 방식·예산·학습 데이터·최적화 조건에 의존합니다. |
+| **Representation change** | Where do representations of clean and corrupted inputs differ substantially? | Normalized distance, cosine distance, CKA, neighborhood-structure changes, etc. | A large change does not necessarily harm prediction. |
+| **Effect on prediction** | How much does a specified internal intervention change the final decision? | Pre/post-intervention differences in accuracy, correct-class margin, and loss | This is the effect of the specified intervention, not proof of a unique cause of failure. |
+| **Repairability** | Where is repair effective when the means and budget for modification are limited? | Budget-specific partial-patching and learned-adaptation effects | This depends on the intervention type, budget, training data, and optimization conditions. |
 
-연구의 주된 검증 대상은 **첫 번째 측정이 세 번째 결과를 얼마나 잘 예측하는가**입니다. 두 번째는 관찰과 복구 사이를 연결하는 실험적 평가 수단입니다.
+The primary question is **how well the first measurement predicts the third outcome**. The second provides an experimental means of linking observation to recovery.
 
-### 2.3 표현 변화가 크더라도 고치기 좋은 위치가 아닐 수 있습니다
+### 2.3 A Large Representation Change May Not Identify a Good Repair Site
 
-아래는 검증할 가능성이지 사전에 확정한 현상이 아닙니다.
+The following are possibilities to test, not phenomena established in advance.
 
-표현의 큰 변화가 최종 분류에 중요하지 않은 방향에서 발생할 수 있습니다. 반대로 변화량이 작아도 결정 경계에 민감한 방향이면 예측에 큰 영향을 줄 수 있습니다. 또한 깨끗한 표현을 외부에서 제공하면 효과적인 위치라도, 손상된 표현만으로 그 보정량을 추정하기는 어려울 수 있습니다.
+A large representation change may occur in directions that are unimportant for final classification. Conversely, even a small change may substantially affect prediction if its direction is sensitive with respect to the decision boundary. Furthermore, a site may be effective when the clean representation is supplied externally, yet estimating the correction from the corrupted representation alone may be difficult.
 
-따라서 표현 차이의 크기, 출력에 대한 민감도, 실제 보정량의 학습 가능성을 동일한 것으로 취급하지 않습니다. 표현 유사도 지표와 기능적 차이를 연결하는 작업 자체가 검증 대상이라는 점은 기존 지표 평가 연구와도 연결됩니다. [R4], [R5]
+We therefore do not equate the magnitude of representation differences, sensitivity of the output, and learnability of the actual correction. Treating the connection between representation similarity metrics and functional differences as a question requiring validation also links this study to prior metric-evaluation research. [R4], [R5]
 
-## 3. 관련 연구와 본 연구의 위치
+## 3. Related Work and Positioning
 
-| 연구 | 확인된 주요 내용 | 본 연구에서의 활용 및 구분 |
+| Study | Established main content | Use and distinction in this study |
 |---|---|---|
-| **CKA — Kornblith et al., ICML 2019** [R1] | 신경망 표현 유사도를 비교하는 방법을 제시합니다. | 기본 표현 지표로 사용하되 복구 위치 예측력은 별도로 평가합니다. |
-| **Do Vision Transformers See Like Convolutional Neural Networks? — Raghu et al., NeurIPS 2021** [R2] | CNN과 ViT의 내부 표현 구조와 정보 전달 특성을 비교합니다. | 구조별 차이를 해석하는 배경입니다. 모델 두 개의 차이를 구조 전체의 법칙으로 일반화하지 않습니다. |
-| **Topology of Deep Neural Networks — Naitzat et al., JMLR 2020** [R3] | 연구에서 다룬 분류 설정에서 층별 위상 변화와 단순화를 분석합니다. | 위상 변화 자체를 실패나 정보 소실로 단정하지 않는 근거입니다. |
-| **Grounding Representation Similarity — Ding et al., NeurIPS 2021** [R4] | 표현 지표가 기능적으로 중요한 변화에 민감하고 무관한 변화에는 둔감한지 평가합니다. | “표현 지표를 기능에 연결하는 최초 연구”라고 주장하지 않습니다. |
-| **ReSi — Klabunde et al., ICLR 2025** [R5] | 여러 표현 유사도 지표를 명시적인 평가 기준으로 비교하는 벤치마크입니다. | 일반적 지표 평가와 구분하여, 예산 제약하의 복구 위치 선택을 평가 과제로 정의합니다. |
-| **CLAT — Gopal et al., ICML 2025** [R6] | criticality를 이용해 일부 중요한 층을 선택적으로 미세조정합니다. | 주요 경쟁 연구입니다. 원래 지표와 자연적 손상에 맞춰 변형한 지표를 구분합니다. |
-| **TopoLip — Chen, 2024 공개** [R7] | 층별 분석에서 위상적 관점과 Lipschitz 연속성을 연결해 강건성을 분석합니다. | 단순히 TDA를 추가하는 것을 차별성으로 삼지 않습니다. |
-| **NeuroShield-ViT — Islam et al., 2025 공개** [R8] | ViT의 적대적 교란 전파를 분석하고 앞쪽 취약 뉴런에 개입하는 방법을 제안합니다. | 변화가 관찰되는 위치와 효과적 개입 위치의 차이가 완전히 새로운 관찰이라고 주장하지 않습니다. |
-| **S&D — Yang et al., ICML 2026 채택 표기** [R9] | 자연적 손상에 대한 강건한 경로를 분석·활용하며 적용 위치도 비교합니다. | “기존 연구에는 개입이나 위치 비교가 없다”는 주장을 배제합니다. |
-| **Activation patching 방법론** [R10], [R11] | 개입의 구성과 평가 기준에 따른 해석상의 차이를 다룹니다. | 개입 연산자, 마스크, 손상 방식, 평가 지표를 명시합니다. 언어 모델에서의 관찰을 비전 모델의 사실로 그대로 전용하지 않습니다. |
+| **CKA — Kornblith et al., ICML 2019** [R1] | Proposes a method for comparing neural representation similarity. | Used as a basic representation metric; its predictive value for repair sites is evaluated separately. |
+| **Do Vision Transformers See Like Convolutional Neural Networks? — Raghu et al., NeurIPS 2021** [R2] | Compares internal representation structures and information transmission in CNNs and ViTs. | Provides context for interpreting architectural differences. Differences between two models are not generalized into laws for entire architecture families. |
+| **Topology of Deep Neural Networks — Naitzat et al., JMLR 2020** [R3] | Analyzes layer-wise topological changes and simplification in the classification settings studied. | Supports avoiding the assumption that topological change itself implies failure or information loss. |
+| **Grounding Representation Similarity — Ding et al., NeurIPS 2021** [R4] | Evaluates whether representation metrics are sensitive to functionally important changes and insensitive to irrelevant ones. | We do not claim to be the first study to connect representation metrics to function. |
+| **ReSi — Klabunde et al., ICLR 2025** [R5] | Benchmarks multiple representation similarity metrics against explicit evaluation criteria. | Defines budget-constrained repair site selection as the evaluation task, distinct from general metric evaluation. |
+| **CLAT — Gopal et al., ICML 2025** [R6] | Uses criticality to selectively fine-tune a subset of important layers. | A major competing study. We distinguish the original metric from a version adapted to natural corruptions. |
+| **TopoLip — Chen, released in 2024** [R7] | Analyzes robustness by linking topological perspectives and Lipschitz continuity in layer-wise analysis. | Merely adding TDA is not treated as a distinguishing contribution. |
+| **NeuroShield-ViT — Islam et al., released in 2025** [R8] | Analyzes adversarial perturbation propagation in ViTs and proposes interventions on vulnerable early neurons. | We do not claim that a discrepancy between the site of observed change and the site of effective intervention is an entirely new observation. |
+| **S&D — Yang et al., listed as accepted at ICML 2026** [R9] | Analyzes and exploits robust paths for natural corruptions and compares application sites. | We exclude claims that prior work lacks interventions or site comparisons. |
+| **Activation patching methodology** [R10], [R11] | Examines interpretive differences arising from intervention construction and evaluation criteria. | We specify intervention operators, masks, corruption procedures, and evaluation metrics. Observations in language models are not directly treated as facts about vision models. |
 
-### 3.1 제안하는 차별화 축
+### 3.1 Proposed Axes of Distinction
 
-본 연구의 기여 후보는 다음 세 축을 하나의 평가 문제로 연결하는 것입니다.
+The candidate contribution is to connect the following three axes within a single evaluation problem.
 
-**예산 의존성:** 수정 가능한 채널 비율, 개입 강도 또는 보정 모듈 용량이 달라질 때, 효과적인 위치와 지표의 선택 성능이 어떻게 달라지는지 평가합니다.
+**Budget dependence:** Evaluate how effective sites and metric-based selection performance change with the fraction of modifiable channels, intervention strength, or adapter capacity.
 
-**손상 간 일반화:** 특정 손상에서 선택한 위치를 고정한 뒤, 선택에 사용하지 않은 손상에서 유효성을 평가합니다. 미관측 손상으로 위치를 다시 고르는 실험과 엄격히 구분합니다.
+**Cross-corruption generalization:** Fix a site selected on particular corruptions and evaluate its effectiveness on corruptions not used for selection. This is strictly distinguished from reselecting sites using unseen corruptions.
 
-**진단–실제 보정 연결:** 깨끗한 표현을 사용하는 진단 실험의 위치 순위가, 테스트 시 손상된 입력만 받는 보정 모듈의 위치 순위를 얼마나 예측하는지 평가합니다.
+**Connection between diagnostics and actual adaptation:** Evaluate how well site rankings from diagnostic experiments using clean representations predict site rankings for adapters that receive only corrupted inputs at test time.
 
-이 조합은 검증할 연구 범위입니다. 본 제안서의 문헌 확인만으로 동일한 설정이 전혀 없다고 확정하지 않으며, 최종적인 독창성 주장은 직접 경쟁 방법의 세부 설정과 실험 결과를 바탕으로 조정합니다.
+This combination defines the research scope to be tested. The literature review in this proposal does not establish that no identical setting exists; final originality claims will be adjusted based on the detailed settings and experimental results of directly competing methods.
 
-### 3.2 주장하지 않을 내용
+### 3.2 Claims We Will Not Make
 
-“최초의 층별 표현 분석”, “최초의 critical layer 발견”, “최초의 표현 지표 기능 검증”, “최초의 층별 TDA 분석”, “기존 연구가 모두 상관관계만 다뤘다”는 주장은 사용하지 않습니다.
+We will not claim “the first layer-wise representation analysis,” “the first discovery of a critical layer,” “the first functional validation of representation metrics,” “the first layer-wise TDA analysis,” or that “all previous studies considered only correlations.”
 
-연구 결과가 뒷받침하는 범위에서 **정의한 복구 문제에 적합한 위치 선택 기준과 실패 조건을 제시하는 것**을 목표로 합니다.
+Our goal is to **identify site-selection criteria and failure conditions appropriate to the defined repair problem**, within the scope supported by the results.
 
-## 4. 연구 목표, 질문 및 가설
+## 4. Objectives, Questions, and Hypotheses
 
-### 4.1 연구 목표
+### 4.1 Research Objective
 
-층별 표현 지표, 제한된 진단용 개입, 실제 학습형 보정을 동일한 데이터 분리와 평가 체계 안에서 연결합니다. 그 결과를 이용해 표현 지표가 단순한 관찰 도구를 넘어 복구 위치 선택의 근거로 사용할 수 있는지 판단합니다.
+We connect layer-wise representation metrics, limited diagnostic interventions, and actual learned adaptation within a common data-splitting and evaluation framework. The results will determine whether representation metrics can serve as a basis for repair site selection beyond their role as observational tools.
 
-### 4.2 연구 질문
+### 4.2 Research Questions
 
-| 번호 | 연구 질문 | 주요 평가 |
+| Number | Research question | Primary evaluation |
 |---|---|---|
-| **RQ1** | 표현 변화량이 큰 층은 제한된 부분 교체로 더 큰 성능 회복을 보이는가? | 층별 순위 관계, 선택 regret, 고정 위치 대비 성능 |
-| **RQ2** | 개입 예산에 따라 효과적인 위치와 지표의 예측력이 달라지는가? | 예산별 회복 곡선, 위치 순위 변화, 실질적 성능 차이 |
-| **RQ3** | 관측 손상에서 선택한 위치가 미관측 손상에서도 유효한가? | 고정된 위치의 미관측 손상 성능, 손상별·종류별 일반화 |
-| **RQ4** | 진단용 부분 교체의 위치 순위가 실제 보정 모듈의 위치 순위를 예측하는가? | 진단–보정 순위 관계, 실제 보정 regret, 선택 비용 |
-| **RQ5 — 선택 확장** | 위상적 지표가 거리·유사도·이웃 구조 지표보다 추가 가치를 제공하는가? | 동일 조건의 선택 성능 차이, 계산 비용, 안정성 |
+| **RQ1** | Do layers with larger representation changes exhibit greater performance recovery under limited partial patching? | Layer-wise rank relationships, selection regret, performance relative to fixed sites |
+| **RQ2** | Do effective sites and the predictive value of metrics vary with the intervention budget? | Budget-specific recovery curves, site-ranking changes, practically meaningful performance differences |
+| **RQ3** | Do sites selected on observed corruptions remain effective on unseen corruptions? | Unseen-corruption performance at fixed sites, generalization by corruption and family |
+| **RQ4** | Do site rankings from diagnostic partial patching predict site rankings for actual adapters? | Diagnostic–adapter rank relationships, actual adaptation regret, selection cost |
+| **RQ5 — Optional extension** | Do topological metrics provide additional value beyond distance, similarity, and neighborhood-structure metrics? | Differences in selection performance under identical conditions, computational cost, stability |
 
-### 4.3 검증 가설과 반증 가능성
+### 4.3 Testable Hypotheses and Falsifiability
 
-**H1. 표현 변화량만으로는 복구 위치를 충분히 설명하기 어렵습니다.**  
-정규화 거리나 CKA 변화가 큰 위치를 선택하는 방법이, 제한된 개입 효과의 전수평가 참조에 비해 의미 있는 성능 손실을 보일 수 있다고 가정합니다. 그러나 단순 지표가 대부분의 조건에서 낮은 regret를 달성한다면 이 가설은 약화됩니다.
+**H1. Representation-change magnitude alone may be insufficient to explain repair sites.**  
+We hypothesize that selecting sites with large normalized distances or CKA changes may incur meaningful performance losses relative to an exhaustive reference evaluation of limited interventions. However, this hypothesis is weakened if simple metrics achieve low regret under most conditions.
 
-**H2. 좋은 위치는 개입 예산에 의존할 수 있습니다.**  
-일부 채널만 수정할 때와 더 넓게 수정할 때 위치 순위가 달라질 수 있다고 가정합니다. 다만 최상위 위치가 바뀌더라도 성능 차이가 오차 범위 이내라면 의미 있는 예산 의존성으로 해석하지 않습니다.
+**H2. Good sites may depend on the intervention budget.**  
+We hypothesize that site rankings may differ between modifying only a few channels and making broader modifications. However, a change in the top-ranked site is not interpreted as meaningful budget dependence if the performance difference falls within the uncertainty range.
 
-**H3. 관측 손상에서의 위치 선택 성능과 미관측 손상에서의 성능은 다를 수 있습니다.**  
-손상 특성에 과도하게 의존하는 지표는 미관측 손상에서 선택 성능이 낮아질 수 있습니다. 반대로 앞쪽·중간·뒤쪽의 고정 선택이 일관되게 충분하다면 더 복잡한 선택 방법의 필요성이 낮습니다.
+**H3. Site-selection performance on observed corruptions may differ from that on unseen corruptions.**  
+Metrics that depend excessively on corruption characteristics may perform poorly on unseen corruptions. Conversely, if fixed early, middle, or late sites are consistently sufficient, the need for more complex selection methods is reduced.
 
-**H4. 진단용 복구 가능성과 실제 학습형 복구 가능성은 완전히 일치하지 않을 수 있습니다.**  
-깨끗한 표현을 제공하는 부분 교체는 보정값을 추정할 필요가 없지만, 실제 보정 모듈은 손상된 표현에서 보정값을 학습해야 합니다. 양자의 차이가 작다면 진단 실험을 유용한 위치 탐색 도구로 사용할 근거가 됩니다. 차이가 크다면 진단 결과의 적용 한계를 규명합니다.
+**H4. Diagnostic repairability and actual learned repairability may not fully coincide.**  
+Partial patching that supplies clean representations does not need to estimate correction values, whereas an actual adapter must learn them from corrupted representations. A small discrepancy would support using diagnostic experiments as a useful site-search tool. A large discrepancy would identify limits on the applicability of diagnostic results.
 
-TDA의 우월성은 기본 가설로 설정하지 않습니다. 추가 지표가 필요하다는 근거가 있을 때만 RQ5를 검증합니다.
+The superiority of TDA is not a baseline hypothesis. RQ5 is tested only when there is evidence that additional metrics are needed.
 
-## 5. 문제 정의와 연구 범위
+## 5. Problem Definition and Scope
 
-### 5.1 입력, 모델 및 표현
+### 5.1 Inputs, Model, and Representations
 
-깨끗한 이미지와 정답 레이블을 $(x,y)$, 손상 종류와 강도를 $(c,s)$로 표시합니다. 손상된 이미지는 다음과 같습니다.
+Let $(x,y)$ denote a clean image and its ground-truth label, and $(c,s)$ the corruption type and severity. The corrupted image is
 
 $$
 \widetilde{x}=T_{c,s}(x).
 $$
 
-모델의 $l$번째 블록까지의 함수를 $h_l$, 나머지 블록과 분류기를 $g_l$로 표시합니다.
+Let $h_l$ denote the model up to block $l$, and $g_l$ the remaining blocks and classifier.
 
 $$
 F(x)=g_l(h_l(x)).
 $$
 
-블록 출력은 다음 계산에 필요한 상태 전체를 의미하도록 정의합니다. 첫 모델에서는 attention과 MLP의 residual addition이 끝난 블록 경계를 사용합니다. 여러 분기나 별도 상태가 경계를 통과하는 구조에서는 단일 텐서만 바꿨다고 전체 상태가 교체되었다고 보지 않습니다.
+The block output is defined to include the entire state needed for subsequent computation. For the first model, we use block boundaries after the attention and MLP residual additions. In architectures where multiple branches or separate states cross a boundary, replacing a single tensor is not considered replacement of the entire state.
 
-### 5.2 선택 단위: 이미지마다가 아니라 모델당 하나의 고정 위치
+### 5.2 Selection Unit: One Fixed Site per Model, Not per Image
 
-기본 과제는 관측 손상의 보정용 자료에서 **모델당 하나의 개입 위치를 선택하고 배포 전에 고정하는 문제**입니다. 입력 이미지마다 위치를 다시 선택하는 동적 라우팅은 기본 범위에 포함하지 않습니다.
+The basic task is to **select one intervention site per model using calibration data from observed corruptions and fix it before deployment**. Dynamic routing that reselects the site for each input image is outside the basic scope.
 
-이 구분은 중요합니다. CKA와 데이터 집합의 위상 지표는 본 설계에서 여러 이미지에 대한 집합 수준 지표입니다. 이를 그대로 개별 이미지의 위험도나 온라인 위치 선택 점수로 해석하지 않습니다.
+This distinction matters. In this design, CKA and dataset-level topological metrics are aggregate metrics over multiple images. They are not directly interpreted as per-image risk or online site-selection scores.
 
-미관측 손상 평가에서도 손상 종류를 입력받아 위치를 바꾸지 않습니다. 여러 관측 손상에서 평균적으로 선택한 위치를 그대로 사용합니다. 손상별로 따로 선택한 결과는 진단용 부가 분석으로만 구분해 보고합니다.
+In unseen-corruption evaluation, the site is not changed based on the corruption type. We retain the site selected on average across multiple observed corruptions. Results from separate selection for each corruption are reported only as supplementary diagnostic analyses.
 
-### 5.3 세 종류의 예산을 분리합니다
+### 5.3 Distinguishing Three Types of Budget
 
-| 예산 | 의미 | 주요 기록 항목 |
+| Budget | Meaning | Main quantities recorded |
 |---|---|---|
-| **진단용 개입 예산 $B_{\mathrm{patch}}$** | 깨끗한 표현을 얼마나 제공하는가? | 수정 채널 비율 $q$, 보간 강도 $\alpha$, 수정 norm 제한 $\rho$, 마스크 정책 |
-| **실제 보정 예산 $B_{\mathrm{adapt}}$** | 학습하고 배포할 보정 모듈에 얼마를 허용하는가? | 추가 파라미터, 추가 연산량, 학습 연산량, 메모리 |
-| **위치 선택 예산 $B_{\mathrm{select}}$** | 좋은 위치를 찾는 데 얼마를 사용하는가? | 지표 계산, backward 횟수, 시험한 위치 수, 탐색용 학습량 |
+| **Diagnostic intervention budget $B_{\mathrm{patch}}$** | How much clean representation is supplied? | Modified channel fraction $q$, interpolation strength $\alpha$, modification norm cap $\rho$, mask policy |
+| **Actual adaptation budget $B_{\mathrm{adapt}}$** | What resources are allowed for training and deploying the adapter? | Additional parameters, additional computation, training computation, memory |
+| **Site-selection budget $B_{\mathrm{select}}$** | What resources are spent finding a good site? | Metric computation, number of backward passes, number of sites tested, training used for search |
 
-채널 5%를 교체하는 것과 특정 수의 파라미터를 학습하는 것은 동일한 예산이 아닙니다. 진단–실제 보정 연결은 각자 정의된 예산에서의 위치 순위와 선택 효과를 비교하며, 두 예산 사이의 수치적 동등성을 가정하지 않습니다.
+Replacing 5% of channels and training a given number of parameters are not equivalent budgets. The diagnostic–adaptation connection compares site rankings and selection effects under their respective budgets, without assuming numerical equivalence between them.
 
-### 5.4 비교 대상에 무개입을 포함합니다
+### 5.4 Including No Intervention as a Candidate
 
-개입하지 않는 선택을 $\varnothing$로 표시하고, 기준 모델 대비 효과를 $U(\varnothing)=0$으로 정의합니다. 가능한 위치 집합을 $\mathcal{L}$이라 할 때 최종 선택 후보는 $\mathcal{L}\cup\{\varnothing\}$입니다.
+We denote no intervention by $\varnothing$ and define its effect relative to the baseline model as $U(\varnothing)=0$. For the set of possible sites $\mathcal{L}$, the final candidate set is $\mathcal{L}\cup\{\varnothing\}$.
 
-모든 개입이 성능을 악화시키거나 깨끗한 입력의 허용 성능 감소를 넘는다면, 무개입이 올바른 선택일 수 있습니다. 연구는 반드시 복구 모듈을 삽입해야 한다고 전제하지 않습니다.
+If every intervention reduces performance or exceeds the permitted decrease on clean inputs, no intervention may be the correct choice. The study does not assume that a repair module must be inserted.
 
-### 5.5 목표는 절대적인 최적 복구 위치의 증명이 아닙니다
+### 5.5 The Goal Is Not to Prove an Absolutely Optimal Repair Site
 
-본 연구가 평가하는 것은 **정해진 개입 방식, 후보 위치, 예산, 학습 절차 안에서의 상대적 복구 효과**입니다. 다른 종류의 보정 모듈이나 더 큰 학습 예산까지 포함한 모든 가능한 복구 방법의 최적 위치를 구하는 것은 아닙니다.
+This study evaluates **relative recovery effects within a specified intervention type, set of candidate sites, budget, and training procedure**. It does not seek the optimal site across all possible repair methods, including other adapter types or larger training budgets.
 
-특히 진단용 부분 교체 결과는 깨끗한 표현에 접근하는 참조 실험입니다. 이를 실제 보정 성능의 수학적 상한으로 부르지 않습니다. 깨끗한 모델도 오분류할 수 있고, 학습형 보정이 특정 조건에서 그 모델보다 높은 정확도를 얻을 가능성도 배제하지 않습니다.
+In particular, diagnostic partial patching is a reference experiment with access to clean representations. It is not called a mathematical upper bound on actual adaptation performance. The clean model can also misclassify inputs, and we do not exclude the possibility that learned adaptation may outperform it under certain conditions.
 
-## 6. 데이터, 모델 및 관찰 위치
+## 6. Data, Models, and Observation Sites
 
-### 6.1 기본 모델
+### 6.1 Base Model
 
-첫 모델 후보는 ImageNet으로 사전학습된 **비증류형 DeiT-S/16**입니다. 공식 구현의 `deit_small_patch16_224`는 12개 블록과 384차원 embedding을 사용합니다. 입력 크기와 토큰 수를 고정하면 블록별 표현 크기가 일정하여 개입 예산을 비교하기에 편리합니다. [R13], [R14]
+The first candidate model is **non-distilled DeiT-S/16** pretrained on ImageNet. The official implementation, `deit_small_patch16_224`, uses 12 blocks and 384-dimensional embeddings. Fixing the input size and token count keeps representation sizes constant across blocks, facilitating intervention-budget comparisons. [R13], [R14]
 
-이 모델을 먼저 사용하는 이유는 특정 구조의 우월성을 가정해서가 아니라, 층별 차원과 출력 형상의 차이를 줄여 위치 효과를 분리하기 위해서입니다. 실제 실행에서는 체크포인트 식별자, 파일 해시, 구현 버전, 전처리 설정을 고정합니다.
+We start with this model to isolate site effects by reducing differences in layer dimensions and output shapes, not because we assume that this architecture is superior. Actual runs will fix the checkpoint identifier, file hash, implementation version, and preprocessing settings.
 
-구조 간 재검증에는 ResNet 계열 체크포인트 하나를 사용합니다. CNN과 ViT의 차이를 주장하려면 사전학습 자료, 학습 방식, clean 성능, 모델 용량의 차이도 함께 검토합니다. 모델 하나씩의 비교만으로 CNN 전체와 ViT 전체에 대한 보편적인 결론을 내리지 않습니다.
+One ResNet-family checkpoint is used for validation across architectures. Claims about CNN–ViT differences must also consider differences in pretraining data, training methods, clean performance, and model capacity. Comparing one model from each family does not justify universal conclusions about all CNNs and ViTs.
 
-### 6.2 과제와 손상 종류
+### 6.2 Task and Corruption Types
 
-분석 과제는 이미지 분류로 제한합니다. 자연적 이미지 손상 평가의 출발점으로 ImageNet-C를 사용합니다. ImageNet-C는 적대적 최악 교란이 아니라 일반적인 이미지 손상에 대한 강건성을 평가하는 벤치마크입니다. [R12]
+The analysis is limited to image classification. We use ImageNet-C as a starting point for evaluating natural image corruptions. ImageNet-C benchmarks robustness to common image corruptions, rather than adversarial worst-case perturbations. [R12]
 
-초기 탐색에서 사용할 손상 후보는 다음과 같습니다.
+Candidate corruptions for initial exploration are as follows.
 
-| 역할 | 손상 후보 | 목적 |
+| Role | Candidate corruptions | Purpose |
 |---|---|---|
-| 관측 손상 | Gaussian noise, defocus blur | 서로 다른 형태의 손상으로 지표·위치 선택을 구성합니다. |
-| 미관측 손상 | contrast, JPEG compression | 선택에 사용하지 않은 손상으로 일반화를 평가합니다. |
-| 확장 평가 | 더 다양한 noise, blur, weather, digital 계열 | 특정 두 손상에만 결과가 의존하는지 확인합니다. |
+| Observed corruptions | Gaussian noise, defocus blur | Construct metrics and site selection using different forms of corruption. |
+| Unseen corruptions | contrast, JPEG compression | Evaluate generalization to corruptions not used for selection. |
+| Extended evaluation | A broader range of noise, blur, weather, and digital corruptions | Check whether results depend on just two particular corruptions. |
 
-위의 관측/미관측 구분은 사전 지정한 기본 예시입니다. 분석 후 유리한 조합으로 바꾸지 않습니다. 정식 일반화 분석에서는 손상 종류뿐 아니라 손상 계열을 통째로 제외하는 평가도 구성합니다.
+The observed/unseen split above is a prespecified baseline example. It will not be changed after analysis to obtain a favorable combination. Formal generalization analysis will also hold out entire corruption families, in addition to individual corruption types.
 
-미관측 강도와 미관측 종류는 다른 문제이므로 분리합니다. 같은 noise에서 강도만 달라진 결과를 새로운 손상 종류로의 일반화라고 부르지 않습니다.
+Unseen severity and unseen corruption type are separate problems and are evaluated separately. Results obtained by changing only the severity of the same noise corruption are not called generalization to a new corruption type.
 
-### 6.3 원본 이미지 단위 데이터 분리
+### 6.3 Splitting Data by Original Image
 
-| 집합 | 역할 | 허용하는 사용 |
+| Split | Role | Permitted use |
 |---|---|---|
-| $D_{\mathrm{fit}}$ | 보정 모듈 학습 | 관측 손상과 clean 이미지, 학습용 레이블을 사용합니다. |
-| $D_{\mathrm{score}}$ | 표현 지표·고정 마스크 추정 | clean–corrupted 쌍으로 위치 선택 점수와 고정된 마스크를 계산합니다. |
-| $D_{\mathrm{val}}$ | 검증과 최종 위치 선택 | 지표 방향, 하이퍼파라미터, clean 허용 감소, 선택 규칙을 확정합니다. |
-| $D_{\mathrm{test}}$ | 최종 평가 | 고정된 규칙을 평가합니다. 결과를 보고 선택 규칙을 수정하지 않습니다. |
+| $D_{\mathrm{fit}}$ | Adapter training | Use observed corruptions, clean images, and training labels. |
+| $D_{\mathrm{score}}$ | Estimation of representation metrics and fixed masks | Compute site-selection scores and fixed masks from clean–corrupted pairs. |
+| $D_{\mathrm{val}}$ | Validation and final site selection | Finalize metric direction, hyperparameters, clean-accuracy tolerance, and selection rules. |
+| $D_{\mathrm{test}}$ | Final evaluation | Evaluate the fixed rules. Do not revise selection rules after seeing the results. |
 
-모든 분리는 **원본 이미지 ID**를 기준으로 수행합니다. 같은 이미지의 clean 버전과 여러 손상·강도 버전은 서로 다른 집합으로 흩어지지 않도록 합니다.
+All splits are made by **original image ID**. The clean version and all corruption/severity variants of the same image must remain in the same split.
 
-기본 권장 방식은 ImageNet 학습 이미지에서 보정용 학습·선택·검증 집합을 분리하고, 공식 검증 이미지 및 대응하는 ImageNet-C 이미지들을 최종 평가에 남기는 것입니다. 보정용 손상은 학습 이미지에 생성하되 생성 코드와 전처리를 고정합니다.
+The recommended default is to partition ImageNet training images into adaptation training, scoring, and validation splits, while reserving official validation images and their corresponding ImageNet-C images for final evaluation. Calibration corruptions are generated from training images using fixed generation code and preprocessing.
 
-공식 ImageNet-C는 평가용으로 보존하며, 저자 저장소의 안내에 따라 공개된 이미지 파일을 사용한 평가를 우선합니다. 공식 파일 대신 손상을 다시 생성해 평가하는 경우에는 동일한 ImageNet-C 점수로 혼동하지 않도록 생성형 평가라고 명시합니다. [R12]
+Official ImageNet-C is reserved for evaluation, with priority given to evaluation using the released image files as instructed in the authors' repository. When corruptions are regenerated instead of using the official files, results are explicitly labeled as generated-corruption evaluation to avoid confusing them with the same ImageNet-C scores. [R12]
 
-사전학습 backbone이 ImageNet 학습 이미지를 본 사실과, 새로 학습하는 보정 모듈·위치 선택 절차에서의 데이터 누수는 별도로 기술합니다. 위 분리는 사전학습 모델의 데이터 이력까지 제거한다는 의미가 아닙니다.
+The fact that the pretrained backbone has seen ImageNet training images is described separately from data leakage in the newly trained adapter and site-selection procedure. These splits do not remove the pretrained model's data history.
 
-### 6.4 평가 집합 일부만 사용하는 경우
+### 6.4 Using Only a Subset of the Evaluation Set
 
-예비 검증에는 클래스 균형을 맞춘 고정 부분집합을 사용할 수 있습니다. 원본 이미지 목록과 추출 seed를 저장하고, 동일한 이미지 집합을 모든 위치와 지표에서 사용합니다.
+A fixed, class-balanced subset may be used for preliminary validation. We save the original image list and sampling seed and use the same image set for all sites and metrics.
 
-부분집합 결과는 전체 벤치마크 결과와 구분합니다. 클래스 일부만 선택하더라도 분류기의 출력 클래스를 임의로 줄이지 않습니다. 전체 ImageNet 클래스 중 일부 이미지만 평가하는 설정과 별도 분류 과제를 혼동하지 않습니다.
+Subset results are distinguished from full-benchmark results. Even when only some classes are sampled, the classifier's output classes are not arbitrarily reduced. Evaluating a subset of images from the full ImageNet class set must not be confused with a separate classification task.
 
-### 6.5 관찰 위치와 표현 요약
+### 6.5 Observation Sites and Representation Summaries
 
-ViT에서는 각 블록의 residual stream 출력을 관찰합니다. 실제 개입에는 전체 토큰 텐서를 사용하되, 집합 수준 표현 분석에는 아래의 요약 방식을 별도로 비교합니다.
+For ViTs, we observe the residual-stream output of each block. Actual interventions use the full token tensor, while aggregate representation analysis separately compares the following summaries.
 
-- CLS 토큰 표현을 사용합니다.
-- patch 토큰의 평균 표현을 사용합니다.
-- 필요할 때 두 표현을 결합하거나 정해진 토큰 표본을 사용합니다.
+- Use the CLS-token representation.
+- Use the mean representation of patch tokens.
+- Combine the two representations or use a fixed token sample when needed.
 
-CNN에서는 residual block 출력과 공간 평균 pooling 표현을 기본 후보로 사용합니다. pooling된 표현으로 지표를 계산하면서 실제 개입은 원래 feature map에 수행하는 경우, **측정 대상과 개입 대상의 차이**를 명시합니다.
+For CNNs, residual-block outputs and spatially average-pooled representations are the default candidates. If metrics are computed on pooled representations while interventions are applied to the original feature maps, we explicitly state **the difference between the measured and intervened representations**.
 
-토큰을 독립적인 이미지 표본처럼 취급해 표본 수를 부풀리지 않습니다. 이미지 단위 분석과 토큰 단위 분석의 통계적 단위도 구분합니다.
+Tokens are not treated as independent image samples to inflate sample size. We also distinguish the statistical units of image-level and token-level analyses.
 
-## 7. 실험 A — 층별 표현 변화 측정
+## 7. Experiment A — Measuring Layer-Wise Representation Change
 
-### 7.1 기본 거리
+### 7.1 Basic Distances
 
-같은 원본 이미지의 표현 차이를 다음과 같이 표시합니다.
+We denote the representation difference for the same original image as
 
 $$
 \Delta h_l(x,c,s)=h_l(x)-h_l(T_{c,s}(x)).
 $$
 
-기본 정규화 거리 후보는 다음과 같습니다.
+The baseline normalized-distance candidate is
 
 $$
 D_l^{\mathrm{rel}}=
@@ -245,13 +245,13 @@ D_l^{\mathrm{rel}}=
 \right].
 $$
 
-원시 거리, 정규화 거리, 층별 activation norm을 함께 기록합니다. 한 가지 정규화가 모든 층을 기능적으로 공정하게 만든다고 가정하지 않으며, clean 기준 RMS 등 대체 정규화에 대한 민감도를 확인합니다.
+We record raw distances, normalized distances, and layer-wise activation norms together. We do not assume that one normalization makes all layers functionally comparable, and examine sensitivity to alternative normalizations such as clean-reference RMS.
 
-cosine distance도 비교하되, norm 변화에 둔감한 성질이 장점인지 손실인지 복구 결과로 판단합니다. 모든 평균은 같은 손상·강도·원본 이미지 집합을 사용해 계산합니다.
+We also compare cosine distance, using recovery outcomes to determine whether its insensitivity to norm changes is beneficial or loses useful information. All averages use the same corruptions, severities, and original images.
 
 ### 7.2 CKA
 
-동일한 이미지 집합의 표현을 행으로 쌓은 행렬을 $H_l$과 $\widetilde{H}_l$로 표시합니다. 열 평균을 제거한 행렬에서 linear CKA를 계산합니다. [R1]
+Let $H_l$ and $\widetilde{H}_l$ be matrices whose rows contain representations of the same image set. Linear CKA is computed after subtracting column means. [R1]
 
 $$
 \operatorname{CKA}(H_l,\widetilde{H}_l)=
@@ -260,41 +260,41 @@ $$
  \|\widetilde{H}_l^\top\widetilde{H}_l\|_F}.
 $$
 
-표현 변화 후보 점수로는 $1-\operatorname{CKA}$를 사용합니다. 이는 이미지 집합의 관계 구조에 관한 값이지 한 이미지의 오류 확률이 아닙니다.
+We use $1-\operatorname{CKA}$ as a candidate representation-change score. It measures relational structure across an image set, not the error probability of an individual image.
 
-표본 수, centering, 표현 요약 방식, 수치 정밀도를 고정합니다. 분산이 거의 없는 표현이나 분모가 작은 경우에는 정의 불안정성을 기록하고 임의의 정상 점수로 대체하지 않습니다. 표본 수에 따른 점수 및 순위 안정성도 확인합니다.
+We fix sample size, centering, representation summaries, and numerical precision. For representations with near-zero variance or small denominators, we record instability in the definition rather than substituting arbitrary valid-looking scores. We also examine score and ranking stability as a function of sample size.
 
-### 7.3 비교 지표군
+### 7.3 Metric Families for Comparison
 
-| 구분 | 후보 | 비교 목적 |
+| Category | Candidates | Purpose of comparison |
 |---|---|---|
-| 직접 변화량 | 정규화 거리, cosine distance | 가장 단순한 위치 선택 기준입니다. |
-| 집합 수준 유사도 | CKA, 선택적으로 Procrustes 계열 거리 | 표현 구조 비교의 기능적 유효성을 평가합니다. |
-| 층별 증폭 지표 | 연속 블록의 변화량 비율·차이 | 누적 변화가 큰 층과 변화가 증가한 층을 구분합니다. |
-| 기존 criticality | CLAT의 원래 지표 및 명시적인 손상형 변형 | 직접 관련된 층 선택 기준과 비교합니다. |
-| 과제 민감도 | clean 방향의 margin gradient 또는 손실 gradient | 출력에 중요한 방향을 반영하면 선택이 개선되는지 확인합니다. |
-| 기하 구조 | 최근접 이웃 보존율, 클래스 내·사이 거리 | TDA 이전의 상대적으로 단순한 구조 지표입니다. |
-| 선택 확장 | PH 기반 거리, TopoLip 관련 지표 | 기존 지표보다 추가 가치를 제공하는지 확인합니다. |
+| Direct change magnitude | Normalized distance, cosine distance | The simplest site-selection criteria. |
+| Aggregate similarity | CKA, optionally Procrustes-family distances | Evaluate the functional validity of representation-structure comparisons. |
+| Layer-wise amplification | Ratios and differences of change magnitudes between consecutive blocks | Distinguish layers with large cumulative changes from layers where change increases. |
+| Existing criticality | Original CLAT metric and an explicit corruption-based variant | Compare against directly relevant layer-selection criteria. |
+| Task sensitivity | Margin or loss gradient in the clean direction | Test whether accounting for directions important to the output improves selection. |
+| Geometric structure | Nearest-neighbor preservation, within-/between-class distances | Relatively simple structural metrics preceding TDA. |
+| Optional extensions | PH-based distances, TopoLip-related metrics | Test for additional value beyond existing metrics. |
 
-gradient나 정답 레이블을 사용하는 지표는 label-free 지표와 같은 정보 조건이라고 주장하지 않습니다. 접근한 정보와 계산 비용을 결과 표에 함께 표시합니다.
+Metrics that use gradients or ground-truth labels are not claimed to operate under the same information conditions as label-free metrics. Results tables report both the information accessed and computational cost.
 
-### 7.4 CLAT 비교의 정확한 범위
+### 7.4 Precise Scope of the CLAT Comparison
 
-CLAT는 원래 적대적 교란에서 정의한 feature weakness와 연속 층의 criticality 비율을 활용합니다. 본 연구가 자연적 손상 쌍으로 유사한 비율을 계산한다면 이는 **CLAT에서 영감을 받은 손상형 변형**이지 원래 방법의 완전한 재현이 아닙니다. [R6]
+CLAT originally uses feature weakness defined under adversarial perturbations and criticality ratios between consecutive layers. If we compute similar ratios from natural-corruption pairs, this is a **CLAT-inspired corruption-based variant**, not a complete reproduction of the original method. [R6]
 
-따라서 원래 지표, 손상형 변형, 실제 CLAT 미세조정 절차를 구분합니다. 변형 지표만 비교한 결과를 “CLAT보다 우수한 방어 방법”의 증거로 사용하지 않습니다. 작은 분모로 생기는 비율 폭증과 첫 블록의 기준 상태도 사전에 정의합니다.
+We therefore distinguish the original metric, the corruption-based variant, and the actual CLAT fine-tuning procedure. Comparing only the variant metric is not evidence of a “better defense than CLAT.” Handling of ratio explosions caused by small denominators and the reference state for the first block are also defined in advance.
 
-### 7.5 지표의 방향을 사후에 뒤집지 않습니다
+### 7.5 Do Not Reverse Metric Direction Post Hoc
 
-표현 변화가 큰 층을 고르는 규칙과 변화가 작은 층을 고르는 규칙은 서로 다른 선택 방법입니다. 두 방법을 모두 비교할 수 있지만, 어느 쪽이 유리한지 최종 테스트 결과를 보고 정하지 않습니다.
+Selecting the layer with the largest representation change and selecting the layer with the smallest change are different selection methods. Both may be compared, but the preferred direction is not determined from final test results.
 
-방향 선택과 여러 지표의 결합은 관측 손상의 검증 집합에서만 수행합니다. 테스트 집합의 점수를 이용해 가장 유리한 해석을 고르는 것을 방지합니다.
+Direction selection and combinations of metrics are determined only on the validation split of observed corruptions. This prevents choosing the most favorable interpretation based on test-set scores.
 
-## 8. 실험 B — 제한된 진단용 부분 교체
+## 8. Experiment B — Limited Diagnostic Partial Patching
 
-### 8.1 개입 연산
+### 8.1 Intervention Operator
 
-손상된 입력의 $l$번째 블록 출력을 같은 이미지의 깨끗한 표현 방향으로 일부 이동시킵니다.
+We move the output of block $l$ for a corrupted input partway toward the clean representation of the same image.
 
 $$
 \widehat h_l
@@ -304,40 +304,40 @@ $$
  \big[h_l(x)-h_l(\widetilde{x})\big].
 $$
 
-$M_{l,q}$는 수정할 위치를 정하는 마스크이고, $q$는 수정 비율, $\alpha$는 교체 강도입니다. 이후에는 원래 모델의 나머지 부분 $g_l$을 그대로 실행합니다.
+$M_{l,q}$ is the mask specifying where to modify the representation, $q$ is the modification fraction, and $\alpha$ is the patching strength. The remaining model $g_l$ is then executed unchanged.
 
-이 실험은 **깨끗한 대응 표현을 알고 있다는 특권적 조건**을 사용합니다. 모델이 스스로 복구했다고 표현하지 않으며, 테스트 환경에서 사용할 수 있는 방어 알고리즘으로 제시하지 않습니다. Activation patching은 개입 방식과 평가 기준을 함께 명시해야 해석할 수 있습니다. [R10], [R11]
+This experiment uses the **privileged condition of knowing the corresponding clean representation**. We do not describe the model as repairing itself or present this as a defense algorithm usable at test time. Interpreting activation patching requires specifying both the intervention procedure and evaluation criteria. [R10], [R11]
 
-### 8.2 기본 마스크는 채널 단위로 정의합니다
+### 8.2 The Default Mask Is Defined over Channels
 
-ViT의 표현을 $N\times d$로 둘 때, 기본 실험은 $d$개 채널 중 $k=\lfloor qd\rfloor$개를 선택해 모든 토큰의 해당 채널에 같은 마스크를 적용합니다. 위치별 $N$과 $d$가 같도록 입력 설정을 고정합니다.
+For a ViT representation of shape $N\times d$, the default experiment selects $k=\lfloor qd\rfloor$ of the $d$ channels and applies the same mask to those channels across all tokens. Input settings are fixed so that $N$ and $d$ are identical across sites.
 
-동일한 비율이라도 정수 채널 수로 변환하면 실제 비율이 달라지므로, 명목 비율과 실제 수정 채널 수를 모두 저장합니다. $q=0$은 별도의 무개입 조건으로 처리합니다.
+Converting a fraction to an integer channel count can change the effective fraction, so both the nominal fraction and actual number of modified channels are saved. $q=0$ is treated as a separate no-intervention condition.
 
-기본 마스크 정책은 다음 두 가지입니다.
+The two default mask policies are as follows.
 
-| 정책 | 정의 | 역할 |
+| Policy | Definition | Role |
 |---|---|---|
-| **무작위 고정 마스크** | 사전 지정한 seed로 채널 순서를 만들고 앞의 $k$개를 선택합니다. | 마스크 최적화 효과를 최소화한 기본 위치 비교입니다. |
-| **관측 자료 기반 고정 마스크** | $D_{\mathrm{score}}$에서 채널별 변화 통계를 계산하고 상위 채널을 고정합니다. | 비슷한 개입 예산에서 데이터 기반 선택이 위치 순위에 미치는 영향을 확인합니다. |
+| **Random fixed mask** | Generate a channel ordering with a prespecified seed and select the first $k$ channels. | Baseline site comparison that minimizes mask-optimization effects. |
+| **Fixed mask based on observed data** | Compute per-channel change statistics on $D_{\mathrm{score}}$ and fix the highest-scoring channels. | Examine how data-driven selection affects site rankings under comparable intervention budgets. |
 
-무작위 마스크는 여러 seed에서 반복합니다. 같은 seed에서는 작은 예산의 마스크가 큰 예산의 마스크에 포함되도록 구성하여, 예산 변화와 마스크 교체 효과가 혼동되지 않게 합니다. 서로 다른 층의 같은 채널 번호가 같은 의미라는 가정은 하지 않습니다.
+Random masks are repeated across multiple seeds. Within each seed, the mask for a smaller budget is contained in that for a larger budget, avoiding confounding budget changes with mask replacement. We do not assume that the same channel index has the same meaning across layers.
 
-개별 테스트 이미지의 clean–corrupted 차이를 보고 마스크를 최적화하는 방식은 추가적인 특권 정보를 사용하므로 별도 진단 조건으로만 둡니다. 기본 위치 비교에서는 지표별로 서로 다른 마스크 최적화를 허용하지 않습니다.
+Optimizing masks using each test image's clean–corrupted difference uses additional privileged information and is reserved for a separate diagnostic condition. The baseline site comparison does not permit different mask optimization for different metrics.
 
-### 8.3 예산 설정과 공정성
+### 8.3 Budget Settings and Fairness
 
-초기 설정 후보는 $q\in\{0.01,0.05,0.10,0.20\}$, $\alpha\in\{0.25,0.50,1.00\}$입니다. 이는 예상 성능에 대한 주장이 아니라 서로 다른 수정 규모를 관찰하기 위한 시작 격자입니다.
+Initial candidate settings are $q\in\{0.01,0.05,0.10,0.20\}$ and $\alpha\in\{0.25,0.50,1.00\}$. These form a starting grid for observing different modification scales, not a claim about expected performance.
 
-수정 비율과 강도가 같아도 실제 이동량은 다를 수 있습니다. 따라서 다음을 함께 기록합니다.
+Even with identical modification fractions and strengths, actual displacement can differ. We therefore record the following together.
 
-**수정 범위:** 선택한 채널 수, 실제 수정 원소 수, 토큰 수를 기록합니다.
+**Modification scope:** Record the selected channel count, actual number of modified elements, and token count.
 
-**수정 크기:** 실제 $\delta_l=\widehat h_l-h_l(\widetilde{x})$의 norm과 clean 기준 RMS로 정규화한 크기를 기록합니다.
+**Modification magnitude:** Record the norm of the actual $\delta_l=\widehat h_l-h_l(\widetilde{x})$ and its magnitude normalized by clean-reference RMS.
 
-**연산 비용:** clean 표현 추출, 손상 표현 추출, 개입 이후 suffix 실행 비용을 구분합니다.
+**Computational cost:** Separate the costs of extracting clean representations, extracting corrupted representations, and executing the suffix after intervention.
 
-보조 실험에서는 수정 방향을 유지하면서 norm 상한을 적용합니다.
+In a supplementary experiment, we apply a norm cap while preserving the modification direction.
 
 $$
 \delta_l^{\mathrm{cap}}
@@ -348,40 +348,40 @@ $$
 \right),
 $$
 
-여기서 $n_l$은 표현 원소 수이고, $r_l$은 관측 clean 자료에서 계산한 원소당 RMS 기준값입니다. norm 상한 아래에 이미 있는 수정량을 인위적으로 키우지는 않습니다.
+where $n_l$ is the number of representation elements and $r_l$ is the per-element RMS reference computed on observed clean data. Modifications already below the norm cap are not artificially enlarged.
 
-**같은 수정 비율·강도 조건**과 **추가적인 norm 상한 조건**을 구분해 보고합니다. 두 조건 모두에서 위치 순위가 유지되는지 확인하되, 모든 층에서 모든 비용과 효과 크기를 동시에 완벽하게 같게 맞췄다고 주장하지 않습니다.
+We report **matched modification-fraction/strength conditions** separately from **conditions with an additional norm cap**. We check whether site rankings persist under both, without claiming to have perfectly matched every cost and effect magnitude across all layers simultaneously.
 
-### 8.4 전체 상태 교체의 자명한 복구를 피합니다
+### 8.4 Avoiding Trivial Recovery through Full-State Replacement
 
-결정론적 모델을 $F=g_l\circ h_l$로 분해할 수 있고, 이후 계산에 필요한 상태 전체를 정확한 clean 상태로 교체하면 다음이 성립합니다.
+If a deterministic model can be decomposed as $F=g_l\circ h_l$ and the entire state required for subsequent computation is replaced with the exact clean state, then
 
 $$
 g_l(\widehat h_l)=g_l(h_l(x))=F(x).
 $$
 
-따라서 전체 상태 교체로 clean 출력이 돌아왔다는 사실만으로 해당 층이 중요하거나 최적의 복구 위치라고 판단할 수 없습니다.
+Thus, recovering the clean output through full-state replacement alone does not establish that the layer is important or is an optimal repair site.
 
-전체 상태 교체는 **구현 검증용 양성 대조군**으로만 사용하고, 위치 선택 성능의 주결과에서 제외합니다. 이는 “깨끗한 모델의 출력 복원”이며 항상 “정답 복원”인 것은 아닙니다.
+Full-state replacement is used only as a **positive control for implementation verification** and excluded from the main site-selection results. It restores the “clean model's output,” which is not always the “correct answer.”
 
-ViT의 토큰 개입에는 추가 주의가 필요합니다. 마지막 블록에서 분류기가 참조하는 CLS 토큰 전체를 clean 값으로 바꾸면, 작은 토큰 비율로도 clean 분류 결과를 사실상 직접 제공할 수 있습니다. 따라서 기본 실험은 부분 채널 교체로 제한합니다. 토큰 실험을 확장할 경우 CLS 포함 여부와 전체 readout 상태 교체 여부를 별도 조건으로 표시합니다.
+Token interventions in ViTs require additional care. Replacing the entire CLS token read by the classifier at the final block with its clean value can effectively supply the clean classification result directly, even at a small token fraction. The default experiment therefore uses partial channel patching. If token experiments are added, CLS inclusion and replacement of the entire readout state are marked as separate conditions.
 
-### 8.5 필수 대조군과 구현 검증
+### 8.5 Required Controls and Implementation Verification
 
-| 검증 | 기대하는 동작 또는 확인 목적 |
+| Check | Expected behavior or purpose |
 |---|---|
-| $q=0$ 또는 $\alpha=0$ | 개입 전 손상 입력의 출력과 수치 오차 범위 안에서 같아야 합니다. |
-| clean 입력에 같은 clean 표현을 제공 | 변화량이 0이므로 출력이 유지되어야 합니다. |
-| 전체 유효 상태의 clean 교체 | 결정론적 경계에서 clean 출력을 재현하는지 확인합니다. |
-| 동일 norm의 무작위 방향 개입 | clean 방향이 아닌 임의의 이동으로도 비슷한 효과가 생기는지 확인합니다. |
-| 원본 이미지 대응을 섞은 교체 | 같은 이미지의 대응 관계가 효과에 중요한지 확인합니다. |
-| hook 해제 후 재평가 | 개입 상태가 다음 실험에 남지 않는지 확인합니다. |
+| $q=0$ or $\alpha=0$ | The output must match the pre-intervention output for the corrupted input within numerical tolerance. |
+| Supply the same clean representation to a clean input | The output must remain unchanged because the difference is zero. |
+| Replace the entire effective state with the clean state | Verify reproduction of the clean output at deterministic boundaries. |
+| Random-direction intervention with the same norm | Check whether arbitrary movement, rather than movement in the clean direction, produces a similar effect. |
+| Patching with shuffled original-image correspondence | Check whether correspondence to the same image matters for the effect. |
+| Reevaluate after removing hooks | Verify that intervention state does not persist into the next experiment. |
 
-대응을 섞은 donor는 의미와 클래스 정보까지 바꿀 수 있으므로 순수한 “정보량 통제”라고 해석하지 않습니다. 필요한 경우 같은 클래스 donor와 다른 클래스 donor를 구분합니다.
+Shuffled donors can change semantic and class information, so they are not interpreted as a pure “information-quantity control.” Same-class and different-class donors are distinguished when needed.
 
-### 8.6 예측 효과 측정
+### 8.6 Measuring Effects on Prediction
 
-전체 평가 집합에서의 정확도 변화가 기본 결과입니다.
+The primary outcome is the accuracy change over the full evaluation set.
 
 $$
 U_l^{\mathrm{patch}}(B,c,s)
@@ -393,46 +393,46 @@ U_l^{\mathrm{patch}}(B,c,s)
 \right].
 $$
 
-위 식의 정확도는 $[0,1]$ 단위이고, $U$는 percentage point 단위입니다. 두 정확도는 동일한 손상 이미지 집합에서 계산합니다. 여러 마스크 seed의 결과는 독립 실행의 평균과 변동성으로 보고하며, 예측을 합치는 ensemble 결과와 혼동하지 않습니다.
+Accuracy in this equation is on the $[0,1]$ scale, and $U$ is measured in percentage points. Both accuracies are computed on the same corrupted image set. Results across mask seeds are reported as the mean and variability of independent runs, not as an ensemble that combines predictions.
 
-연속형 보조 지표로 정답 margin의 변화도 계산합니다.
+As a continuous secondary metric, we also compute the change in the correct-class margin.
 
 $$
 m(z,y)=z_y-\max_{k\ne y}z_k.
 $$
 
-정답 확률만을 사용하면 confidence나 calibration 변화와 분리하기 어려울 수 있으므로, 정확도·margin·손실을 함께 확인합니다. 분모가 작거나 음수가 될 수 있는 정규화 회복률은 주평가 지표로 사용하지 않습니다.
+Using only correct-class probability can make it difficult to separate recovery from changes in confidence or calibration, so we examine accuracy, margin, and loss together. Normalized recovery rates whose denominators may be small or negative are not used as primary evaluation metrics.
 
-### 8.7 회복과 새 오류를 함께 평가합니다
+### 8.7 Evaluating Recovery and New Errors Together
 
-전체 정확도 외에 다음 집합을 개입 전에 고정합니다.
+In addition to overall accuracy, the following sets are fixed before intervention.
 
-**손상 유발 실패 집합:** clean에서는 정답이지만 손상 후에는 오답인 이미지 집합입니다. 이 집합에서의 회복률은 복구의 직접적인 효과를 보여줍니다.
+**Corruption-induced failure set:** Images classified correctly when clean but incorrectly after corruption. Recovery on this set shows the direct repair effect.
 
-**손상 후에도 정답인 집합:** 개입 전에는 맞았으나 개입으로 틀리게 된 비율을 측정합니다. 일부 오류를 고치면서 기존 정답을 더 많이 망가뜨리는 경우를 숨기지 않습니다.
+**Set remaining correct after corruption:** We measure the fraction of images that were correct before intervention but become incorrect afterward. We do not conceal cases where fixing some errors damages more previously correct predictions.
 
-전체 집합, 회복 대상 집합, 새 오류 대상 집합의 결과를 함께 보고합니다. 개입 후의 결과를 기준으로 유리한 분석 집합을 다시 만들지 않습니다.
+We report results for the full set, the recovery set, and the set at risk of new errors together. Favorable analysis subsets are not reconstructed based on post-intervention outcomes.
 
-## 9. 실험 C — 표현 지표의 위치 선택 신뢰성 평가
+## 9. Experiment C — Evaluating the Reliability of Representation Metrics for Site Selection
 
-### 9.1 관측 점수와 실제 효과를 비교합니다
+### 9.1 Comparing Observational Scores with Actual Effects
 
-각 손상·강도·예산 조건에서 다음 두 벡터를 비교합니다.
+For each corruption, severity, and budget condition, we compare the following two vectors.
 
 $$
 \mathbf{s}=(s_1,\ldots,s_L),\qquad
 \mathbf{u}(B)=(U_1(B),\ldots,U_L(B)).
 $$
 
-$\mathbf{s}$는 표현 지표가 만든 위치 점수이고, $\mathbf{u}$는 정해진 개입을 직접 실행해 측정한 효과입니다.
+$\mathbf{s}$ contains site scores produced by a representation metric, and $\mathbf{u}$ contains effects measured by directly applying the specified intervention.
 
-층별 Spearman 또는 Kendall 순위 관계를 계산하되, 상관관계만으로 지표의 유용성을 판정하지 않습니다. 층 수가 작을 때의 순위 불확실성과 서로 인접한 층의 의존성도 고려합니다.
+We compute layer-wise Spearman or Kendall rank relationships, but do not judge metric utility from correlation alone. We also account for rank uncertainty with few layers and dependence between adjacent layers.
 
-### 9.2 핵심 지표: 위치 선택 regret
+### 9.2 Core Metric: Site-Selection Regret
 
-관측 자료만으로 선택한 위치를 $\widehat l_m(B)$라고 하겠습니다. clean 성능 제약 등 검증 집합에서 정한 조건을 만족하는 후보 집합을 $\mathcal A_{\mathrm{val}}(B)$로 두고 무개입도 포함합니다.
+Let $\widehat l_m(B)$ denote the site selected using only observed data. Let $\mathcal A_{\mathrm{val}}(B)$ be the candidate set satisfying conditions established on the validation split, such as clean-performance constraints, including no intervention.
 
-최종 평가에서의 regret는 다음과 같습니다.
+Regret in the final evaluation is
 
 $$
 \operatorname{Regret}_m(B)
@@ -442,70 +442,70 @@ $$
 U_{\mathrm{test}}(\widehat l_m(B),B).
 $$
 
-이는 **지표 기반 선택 때문에 동일한 후보군 내에서 놓친 성능**입니다. 0에 가까울수록 전수평가 참조에 가까운 선택입니다.
+This is **performance forgone within the same candidate set because of metric-based selection**. Values closer to zero indicate choices closer to the exhaustive-evaluation reference.
 
-우변의 최댓값은 최종 테스트를 모두 평가한 후 만드는 **사후적 비교 참조**입니다. 실제 선택 알고리즘이 이 값을 보고 위치를 고르는 것이 아닙니다. 또한 유한 표본에서 가장 큰 관측값을 취한 것이므로 낙관 편향이 생길 수 있습니다. 선택 방법은 항상 관측 자료에서 고정하고, 참조의 불확실성을 함께 보고합니다.
+The maximum on the right-hand side is a **post-hoc comparison reference** constructed after all final test evaluations. The actual selection algorithm does not use it to choose a site. Taking the largest observed value in a finite sample can also introduce optimistic bias. Selection methods are always fixed on observed data, and uncertainty in the reference is reported.
 
-후보의 허용 조건을 확인하는 데도 평가 비용이 듭니다. 저비용 선택 방법은 먼저 고른 위치만 시험하거나 학습한 뒤 검증 조건을 확인하고, 조건을 만족하지 못하면 무개입으로 돌아가는 규칙을 사용할 수 있습니다. 전수평가로 알아낸 다른 위치들의 허용 여부를 선택기에 무료로 제공하지 않습니다. 검증 레이블로 무개입 여부를 판단하는 경우에는, 표현 점수 자체가 label-free이더라도 전체 선택 절차는 레이블을 사용한다고 표시합니다.
+Checking candidate admissibility also incurs evaluation cost. A low-cost selection method may first test or train only its chosen site, check the validation conditions, and fall back to no intervention if they are not met. Admissibility information about other sites obtained through exhaustive evaluation is not supplied to the selector for free. If validation labels are used to decide whether to intervene, the full selection procedure is labeled as using labels even when the representation score itself is label-free.
 
-실제 사용 가능한 강한 비교군으로는 **검증 집합에서 전 위치를 평가해 하나를 선택한 방법**을 별도로 둡니다. 이 방법은 선택 비용이 크지만 테스트 레이블을 사용하지 않으므로 사후 참조와 구분됩니다.
+As a strong practically usable baseline, we separately include **selection of one site after evaluating all sites on the validation split**. This method is expensive to select with but uses no test labels, distinguishing it from the post-hoc reference.
 
-### 9.3 기본 위치 선택 비교군
+### 9.3 Baseline Site-Selection Methods
 
-| 비교군 | 선택 방식 | 필요성 |
+| Baseline | Selection method | Rationale |
 |---|---|---|
-| 무개입 | 원래 모델을 유지합니다. | 복구 자체가 필요한지 확인합니다. |
-| 앞쪽 고정 | 첫 번째 후보 블록을 선택합니다. | 단순한 초기 개입 가설을 비교합니다. |
-| 중간 고정 | 사전 지정한 중간 블록을 선택합니다. | 고정 위치 기준입니다. |
-| 뒤쪽 고정 | 마지막 후보 블록을 선택합니다. | 분류기에 가까운 위치의 이점을 확인합니다. |
-| 무작위 위치 | 사전 지정한 분포에서 위치를 선택합니다. | 지표가 실제 정보를 제공하는지 확인합니다. |
-| 표현 지표 기반 | 관측 손상에서 계산한 점수로 선택합니다. | 연구의 주요 평가 대상입니다. |
-| 소규모 직접 탐색 | 일부 자료나 일부 위치에서 실제 개입 효과를 측정합니다. | 지표 계산보다 직접 시험이 나은지 확인합니다. |
-| 검증 집합 전수 선택 | 모든 후보의 검증 성능으로 선택합니다. | 실제 사용 가능한 고비용 비교군입니다. |
-| 테스트 전수평가 참조 | 고정된 모든 후보의 최종 성능 최댓값을 봅니다. | 사후적인 regret 기준이며 배포 방법이 아닙니다. |
+| No intervention | Retain the original model. | Determine whether repair is needed at all. |
+| Fixed early site | Select the first candidate block. | Compare a simple early-intervention hypothesis. |
+| Fixed middle site | Select a prespecified middle block. | Provide a fixed-site baseline. |
+| Fixed late site | Select the last candidate block. | Examine the advantage of proximity to the classifier. |
+| Random site | Select a site from a prespecified distribution. | Determine whether metrics provide useful information. |
+| Representation-based selection | Select using scores computed on observed corruptions. | The main subject of evaluation. |
+| Small direct search | Measure actual intervention effects on some data or at some sites. | Determine whether direct testing is preferable to metric computation. |
+| Exhaustive validation selection | Select based on all candidates' validation performance. | A practically usable, high-cost baseline. |
+| Exhaustive test-evaluation reference | Take the maximum final performance across all fixed candidates. | A post-hoc regret reference, not a deployment method. |
 
-복잡한 지표가 고정 위치보다 낫지 않으면 그 결과를 명시합니다. 표현 분석의 비용이 작은 직접 탐색보다 크다면, 순위 예측이 가능해도 효율적인 선택 방법이라고 주장하지 않습니다.
+If complex metrics do not outperform fixed sites, we state this explicitly. If representation analysis costs more than a small direct search, we do not claim it is an efficient selection method merely because it predicts rankings.
 
-### 9.4 예산 의존성의 판정
+### 9.4 Assessing Budget Dependence
 
-예산이 바뀔 때 최상위 위치의 이름만 바뀌는지를 보는 것으로는 부족합니다. 위치별 회복 곡선의 교차, 성능 차이의 크기, bootstrap 신뢰구간을 함께 확인합니다.
+It is insufficient to observe only whether the identity of the top-ranked site changes with the budget. We jointly examine crossings of site-specific recovery curves, the magnitudes of performance differences, and bootstrap confidence intervals.
 
-여러 위치가 사실상 같은 성능을 보인다면 하나의 “critical layer” 대신 **효과가 비슷한 위치 집합**으로 보고합니다. 작은 수치 차이를 큰 구조적 발견처럼 해석하지 않습니다.
+When several sites perform essentially equally, we report an **equivalence set of sites** rather than a single “critical layer.” Small numerical differences are not interpreted as major structural discoveries.
 
-### 9.5 미관측 손상 평가
+### 9.5 Evaluation on Unseen Corruptions
 
-관측 손상에서 점수·마스크·위치·하이퍼파라미터를 고정한 뒤 미관측 손상을 평가합니다. 기본 선택은 관측 손상의 혼합에 대한 하나의 고정 위치입니다.
+Scores, masks, sites, and hyperparameters are fixed on observed corruptions before evaluating unseen corruptions. The default selection is one fixed site chosen for a mixture of observed corruptions.
 
-미관측 손상의 clean–corrupted 쌍은 최종 진단 그래프를 만드는 데 사용할 수 있지만, 그 그래프를 보고 실제 배포 위치를 다시 고르면 미관측 일반화 평가가 아닙니다. 이러한 target-informed 분석은 사후 진단으로 별도 표기합니다.
+Clean–corrupted pairs from unseen corruptions may be used to construct final diagnostic plots, but reselecting the deployed site based on those plots is not unseen-corruption generalization evaluation. Such target-informed analyses are separately labeled as post-hoc diagnostics.
 
-손상별 성능과 전체 평균을 모두 보고합니다. 평균 개선이 특정 손상에서의 큰 악화를 가리는지 확인합니다.
+We report both per-corruption performance and overall averages. We check whether average improvements conceal large deteriorations on particular corruptions.
 
-## 10. 실험 D — 실제 학습형 보정으로의 연결
+## 10. Experiment D — Connecting to Actual Learned Adaptation
 
-### 10.1 고정 backbone과 단일 보정 모듈
+### 10.1 Frozen Backbone and a Single Adapter
 
-각 후보 블록 뒤에 하나의 작은 residual 보정 모듈을 삽입합니다.
+A single small residual adapter is inserted after each candidate block.
 
 $$
 \widehat h_l=h_l(\widetilde{x})+A_{\phi,l}(h_l(\widetilde{x})).
 $$
 
-기본 모듈 후보는 token-wise 또는 위치별로 동일하게 적용하는 병목 MLP입니다.
+The default candidate module is a bottleneck MLP applied identically token-wise or at each spatial position.
 
 $$
 A_{\phi,l}(h)=W_{\mathrm{up}}\,
 \sigma\!\left(W_{\mathrm{down}}\operatorname{LN}(h)\right).
 $$
 
-backbone과 원래 분류기는 고정하고 $A_{\phi,l}$만 학습합니다. 정규화의 학습 가능 여부, bias 사용 여부, 초기화 방식까지 모든 후보 위치에서 같게 맞춥니다. 출력 projection을 0으로 초기화하는 등, 시작 시 원래 모델과 같은 출력을 내도록 구성합니다.
+The backbone and original classifier are frozen, and only $A_{\phi,l}$ is trained. Normalization trainability, bias use, and initialization are identical across candidate sites. The module is configured to reproduce the original model's output initially, for example by zero-initializing the output projection.
 
-ViT 기본 모델에서는 블록별 표현 차원이 같으므로 같은 병목 차원을 쓰면 모듈의 추가 파라미터 수와 forward 연산량을 직접 비교하기 쉽습니다. 병목 차원 후보는 예를 들어 $r\in\{8,32,64\}$로 두되, 실제 파라미터와 연산량을 측정해 예산을 기록합니다.
+For the base ViT, representation dimensions are identical across blocks, so using the same bottleneck width facilitates direct comparison of added parameters and forward computation. Candidate bottleneck widths may be $r\in\{8,32,64\}$, for example, but budgets are recorded using measured parameter counts and computation.
 
-이 병목 차원은 비선형 모듈의 용량 설정이며 진단 실험의 채널 교체 비율과 동일한 의미가 아닙니다.
+This bottleneck width controls the capacity of a nonlinear module and does not have the same meaning as the channel-patching fraction in diagnostic experiments.
 
-### 10.2 학습 목적
+### 10.2 Training Objective
 
-기본 목적은 관측 손상에 대한 분류 손실과 clean 성능 유지 항의 조합입니다.
+The default objective combines classification loss on observed corruptions with a term for maintaining clean performance.
 
 $$
 \mathcal L_{\mathrm{adapt}}
@@ -517,55 +517,55 @@ $$
 \right].
 $$
 
-$\lambda_{\mathrm{clean}}$과 최적화 설정은 검증 집합에서만 결정합니다. 모든 위치에 동일한 튜닝 범위를 부여합니다.
+$\lambda_{\mathrm{clean}}$ and optimization settings are determined only on the validation split. Every site receives the same tuning range.
 
-선택 확장으로 clean feature matching을 추가할 수 있지만, 기본 분류 목적과 분리해 평가합니다. feature matching을 주목적으로 학습한 뒤 진단용 clean 교체와 잘 일치한다는 사실만으로 일반적인 복구 위치 예측이 성립한다고 해석하지 않습니다.
+Clean feature matching may be added as an optional extension, but is evaluated separately from the basic classification objective. Training primarily for feature matching and then observing agreement with diagnostic clean patching is not by itself evidence of general repair-site predictability.
 
-clean 입력이나 clean teacher는 허용된 학습 집합에서만 사용합니다. 테스트 시에는 보정된 모델에 손상된 이미지 하나만 제공하고, 해당 이미지의 clean 버전·정답·손상 종류·미관측 손상 통계를 사용하지 않습니다.
+Clean inputs or a clean teacher are used only within the permitted training split. At test time, the adapted model receives only one corrupted image, without its clean version, ground-truth label, corruption type, or statistics from unseen corruptions.
 
-### 10.3 학습 비용의 위치 의존성을 통제합니다
+### 10.3 Controlling the Site Dependence of Training Cost
 
-backbone 파라미터를 고정하더라도 보정 모듈까지 gradient를 전달하려면 그 뒤쪽 계산을 통과해야 합니다. 따라서 앞쪽 위치와 뒤쪽 위치는 같은 모듈을 사용해도 학습 연산량이 달라질 수 있습니다.
+Even with frozen backbone parameters, gradients must pass through downstream computation to reach the adapter. Thus, early and late sites may require different training computation despite using identical modules.
 
-주실험에서는 같은 데이터 노출량과 optimizer update 수를 사용하고 실제 학습 연산량을 보고합니다. 보조 실험에서는 누적 학습 연산량을 맞춘 조건을 구성합니다. **같은 update 수와 같은 학습 FLOPs를 동시에 보장했다고 주장하지 않습니다.**
+The main experiment uses the same data exposure and number of optimizer updates and reports actual training computation. Supplementary experiments match cumulative training computation. **We do not claim to guarantee both equal update counts and equal training FLOPs simultaneously.**
 
-구현 시 backbone의 파라미터를 고정하는 것과 전체 forward를 gradient 비활성화 상태로 실행하는 것을 혼동하지 않습니다. 보정 모듈 뒤쪽은 입력에 대한 gradient 경로가 유지되어야 합니다. CNN에서는 BatchNorm 통계가 위치별로 다르게 바뀌지 않도록 고정 여부를 명시합니다.
+Implementation must distinguish freezing backbone parameters from running the entire forward pass with gradients disabled. The gradient path with respect to inputs must remain intact downstream of the adapter. For CNNs, we specify whether BatchNorm statistics are frozen so that they do not change differently across sites.
 
-### 10.4 진단–실제 보정의 세 가지 연결을 분리합니다
+### 10.4 Distinguishing Three Diagnostic–Adaptation Connections
 
-| 연결 | 구체적인 질문 | 평가 |
+| Connection | Specific question | Evaluation |
 |---|---|---|
-| 표현 지표 → 부분 교체 | 표현 변화가 큰 위치가 clean 정보를 일부 주입했을 때 효과적인가? | $s_l$과 $U_l^{\mathrm{patch}}$ |
-| 부분 교체 → 실제 보정 | clean 방향 개입이 효과적인 위치가 학습형 보정에도 유리한가? | $U_l^{\mathrm{patch}}$와 $U_l^{\mathrm{adapt}}$ |
-| 표현 지표 → 실제 보정 | 간단한 표현 측정만으로 실제 배포 위치를 고를 수 있는가? | 지표 선택 위치의 실제 보정 regret |
+| Representation metric → partial patching | Are sites with large representation changes effective when some clean information is injected? | $s_l$ and $U_l^{\mathrm{patch}}$ |
+| Partial patching → actual adaptation | Are sites where clean-direction interventions are effective also favorable for learned adaptation? | $U_l^{\mathrm{patch}}$ and $U_l^{\mathrm{adapt}}$ |
+| Representation metric → actual adaptation | Can simple representation measurements select an actual deployment site? | Actual adaptation regret at the metric-selected site |
 
-세 관계를 모두 보고해야 실패의 원인을 구분할 수 있습니다. 표현 지표 자체가 진단 효과를 예측하지 못하는 경우와, 진단 효과는 예측하지만 학습형 보정으로 전이되지 않는 경우는 다른 결론입니다.
+All three relationships must be reported to distinguish sources of failure. Failure of the representation metric to predict diagnostic effects and successful prediction of diagnostic effects that do not transfer to learned adaptation lead to different conclusions.
 
-### 10.5 실제 선택 절차와 전수평가 참조
+### 10.5 Actual Selection Procedure and Exhaustive-Evaluation Reference
 
-실제 선택 방법은 관측 자료에서 위치를 고른 뒤 선택한 위치의 보정 모듈만 학습하는 절차를 기본으로 합니다. 비교를 위해 모든 위치의 모듈을 학습한 결과는 연구용 전수평가 참조로 보관합니다.
+The default practical selection procedure chooses a site from observed data and trains an adapter only at that site. Results from training modules at every site are retained as an exhaustive-evaluation reference for research comparisons.
 
-진단 기반 선택이 얼마나 효율적인지는 **진단 계산 비용 + 선택한 보정 모듈의 학습 비용**으로 평가합니다. 모든 위치의 모듈을 먼저 학습한 뒤 그 결과로 만든 선택기를, 학습 비용을 줄이는 방법처럼 보고하지 않습니다.
+The efficiency of diagnostic selection is evaluated as **diagnostic computation cost + training cost of the selected adapter**. A selector constructed after training modules at all sites is not reported as a method that reduces training cost.
 
-연구 실험에서 참조 결과를 만들기 위해 실제 지출한 총 연산량과, 각 선택 방법을 독립적으로 사용할 때 필요한 연산량도 구분합니다.
+We also distinguish the total computation actually spent producing reference results in the research experiments from the computation required to use each selection method independently.
 
-### 10.6 실제 보정의 clean 성능 제약
+### 10.6 Clean-Performance Constraint for Actual Adaptation
 
-실제 보정은 손상 입력에서의 개선과 clean 성능 변화를 함께 평가합니다. clean 정확도 감소의 허용치를 $\varepsilon_{\mathrm{clean}}$로 정의하고, 검증 자료에서 정한 허용치 안에서 후보를 선택합니다.
+Actual adaptation is evaluated jointly for improvement on corrupted inputs and changes in clean performance. We define the clean-accuracy tolerance as $\varepsilon_{\mathrm{clean}}$ and select candidates within the tolerance established on validation data.
 
-테스트에서 허용치를 넘으면 실제 위반으로 보고하며, 테스트 결과를 보고 후보에서 조용히 제거하지 않습니다. 진단용 clean-to-clean 교체가 무해했다는 사실은 실제 보정 모듈의 clean 성능 유지에 대한 증거가 아닙니다.
+Exceeding the tolerance at test time is reported as an actual violation; candidates are not silently removed after inspecting test results. Harmless diagnostic clean-to-clean patching is not evidence that an actual adapter preserves clean performance.
 
-## 11. 새로운 위치 선택 방법의 개발 조건
+## 11. Conditions for Developing New Site-Selection Methods
 
-### 11.1 새 지표를 만드는 것은 필수 목표가 아닙니다
+### 11.1 Creating a New Metric Is Not a Required Goal
 
-기존 거리나 고정 위치 선택이 충분히 좋은 결과를 낸다면, 불필요하게 새 지표를 만들지 않습니다. 이 경우 연구의 기여는 정해진 복구 문제에서 단순한 선택이 충분한 조건을 보여주는 데 있습니다.
+If existing distances or fixed-site selection perform sufficiently well, we do not introduce a new metric unnecessarily. In that case, the contribution is to establish conditions under which simple selection suffices for the defined repair problem.
 
-새 선택 방법은 기존 지표가 일관되게 큰 regret를 보이고, 그 실패가 측정 가능한 특징과 연결될 때 개발합니다.
+A new selection method is developed when existing metrics consistently exhibit large regret and their failures can be linked to measurable features.
 
-### 11.2 과제 민감도는 먼저 비교할 강한 기준입니다
+### 11.2 Task Sensitivity Is a Strong Baseline to Compare First
 
-표현 차이의 크기만으로는 효과의 방향을 알 수 없다는 점은 간단한 국소 근사로 설명할 수 있습니다. margin을 $m(g_l(h),y)$로 두고 작은 개입 $\delta_l$을 적용하면 다음 근사를 생각할 수 있습니다.
+A simple local approximation explains why representation-difference magnitude alone cannot determine the direction of the effect. For margin $m(g_l(h),y)$ and a small intervention $\delta_l$, consider
 
 $$
 \Delta m
@@ -575,103 +575,103 @@ $$
 \right\rangle.
 $$
 
-즉 변화량이 크더라도 출력에 중요한 방향과 맞지 않으면 margin 개선이 작을 수 있습니다. 이는 작은 개입에서의 국소 근사이며, 큰 부분 교체나 비선형 구간을 보장하는 식은 아닙니다.
+Thus, even a large change may yield little margin improvement if it is not aligned with directions important to the output. This is a local approximation for small interventions, not a guarantee for large partial patches or nonlinear regions.
 
-이를 이용한 방향 민감도 점수는 해석 가능한 비교군으로 둡니다. 레이블과 backward 계산이 필요하다는 비용을 명시하고, 이를 새로운 독창적 이론이라고 주장하지 않습니다.
+A directional-sensitivity score based on this approximation is included as an interpretable baseline. We explicitly account for its label and backward-computation requirements and do not claim it as a novel original theory.
 
-### 11.3 예산을 반영한 선택기 후보
+### 11.3 Candidate Budget-Aware Selectors
 
-확장 방법으로 표현 변화, 과제 민감도, 정규화 깊이, 개입 예산을 입력으로 받는 단순한 회복량 예측기를 검토할 수 있습니다.
+As an extension, we may examine a simple recovery predictor that takes representation change, task sensitivity, normalized depth, and intervention budget as inputs.
 
 $$
 \widehat U_l(B)
 =q_\theta\big(D_l,S_l,l/L,B\big).
 $$
 
-여기서 $S_l$은 과제 민감도 등의 추가 특징입니다. 먼저 단순한 회귀나 순위 모델을 사용하고, 깊이만 사용하는 모델 및 깊이·예산만 사용하는 모델과 비교합니다.
+Here, $S_l$ denotes additional features such as task sensitivity. We first use simple regression or ranking models and compare them with depth-only and depth-and-budget-only models.
 
-학습에 사용하는 회복량은 관측 손상과 허용된 개발 자료에서만 얻습니다. 같은 원본 이미지의 파생 표본을 학습·검증에 나누지 않고, 손상 종류를 묶은 검증을 수행합니다. 하나의 모델에서 얻은 수십 개 층별 관측을 독립적인 대규모 학습 자료처럼 취급하지 않습니다.
+Training recovery targets are obtained only from observed corruptions and permitted development data. Derived samples of the same original image are not split between training and validation, and validation groups samples by corruption type. A few dozen layer-wise observations from one model are not treated as a large independent training dataset.
 
-선택기를 학습하기 위해 모든 위치의 실제 보정 결과가 필요했다면 그 비용을 포함합니다. 추가 모델이나 새로운 조건에서 그 비용을 회수하는 검증 없이 탐색 절감 효과를 주장하지 않습니다.
+If training a selector requires actual adaptation outcomes from every site, that cost is included. We do not claim search savings without demonstrating that this cost is recouped on additional models or new conditions.
 
-## 12. TDA 확장의 목적과 검증 조건
+## 12. Purpose and Validation Conditions of the TDA Extension
 
-### 12.1 TDA는 새로운 질문에 답할 때 사용합니다
+### 12.1 Use TDA When It Answers a New Question
 
-TDA를 사용하는 목적은 “층마다 위상 구조를 계산했다”는 사실을 추가하는 것이 아닙니다. 이미 층별 위상 변화와 강건성을 연결하는 관련 연구가 있으므로, 다음 질문에 대한 추가적인 설명력이 필요합니다. [R3], [R7]
+The purpose of TDA is not merely to add the fact that “topological structure was computed at each layer.” Prior work already connects layer-wise topological changes to robustness, so additional explanatory value is required for the following question. [R3], [R7]
 
-> 같은 수정 예산에서, 위상 구조 변화가 정규화 거리·CKA·최근접 이웃 구조보다 더 효과적인 복구 위치를 선택하게 해주는가?
+> Under the same modification budget, do changes in topological structure enable selection of more effective repair sites than normalized distance, CKA, and nearest-neighbor structure?
 
-기본 지표가 충분히 좋은 경우에는 TDA를 추가하지 않습니다. 추가하더라도 위치 선택 성능, 샘플 안정성, 계산 비용을 모두 비교합니다.
+If basic metrics are sufficient, TDA is not added. If it is added, we compare site-selection performance, sample stability, and computational cost.
 
-### 12.2 분석 대상
+### 12.2 Objects of Analysis
 
-같은 이미지 집합의 층별 표현을 다음과 같이 구성합니다.
+Layer-wise representations of the same image set are constructed as follows.
 
 $$
 \mathcal H_l=\{h_l(x_i)\}_{i=1}^{n},\qquad
 \widetilde{\mathcal H}_l=\{h_l(\widetilde{x}_i)\}_{i=1}^{n}.
 $$
 
-필요한 표현 요약 후 persistent homology를 계산하고, clean과 corrupted persistence diagram 사이의 차이를 후보 지표로 사용합니다. homology 차수는 계산과 해석이 가능한 $H_0$, $H_1$부터 검토합니다.
+After the required representation summarization, we compute persistent homology and use differences between clean and corrupted persistence diagrams as candidate metrics. We initially consider homology dimensions $H_0$ and $H_1$, for which computation and interpretation are feasible.
 
-각 층에서 따로 구한 diagram의 변화와, 층 사이의 사상을 갖춘 하나의 persistence module은 같은 개념이 아닙니다. 본 연구의 기본 TDA 확장은 **각 층의 점군에서 얻은 diagram을 비교하는 방식**이며 층 방향의 엄밀한 위상적 생존 시간을 정의했다고 주장하지 않습니다.
+Changes between diagrams computed separately at each layer are not the same concept as a single persistence module equipped with maps between layers. The default TDA extension **compares diagrams obtained from each layer's point cloud**; it does not claim to define rigorous topological lifetimes along network depth.
 
-### 12.3 통제할 항목
+### 12.3 Items to Control
 
-| 항목 | 통제 원칙 |
+| Item | Control principle |
 |---|---|
-| 표본 | 동일한 원본 이미지와 클래스 구성으로 비교하고, 여러 부분표본에서 안정성을 확인합니다. |
-| 표현 스케일 | 관측 clean 자료에서 정한 정규화를 clean·corrupted에 동일하게 적용합니다. |
-| 차원 축소 | PCA 등은 허용된 관측 자료에서 적합하고 고정합니다. 테스트마다 새로 적합하는 방식과 구분합니다. |
-| 거리와 filtration | 거리 함수, filtration 범위, homology 차수를 고정합니다. |
-| diagram 처리 | 무한 구간, 빈 diagram, 작은 persistence의 처리 규칙을 미리 정의합니다. |
-| 레이블 | 전체 구조와 클래스 조건부 구조를 구분하며 레이블 사용 여부를 표시합니다. |
-| 계산 | 표본 수·특징 차원별 처리량, 최대 메모리, 위치 선택 총비용을 기록합니다. |
+| Samples | Compare the same original images and class composition, and check stability across multiple subsamples. |
+| Representation scale | Apply the same normalization, determined from observed clean data, to clean and corrupted representations. |
+| Dimensionality reduction | Fit PCA or similar methods on permitted observed data and fix them. Distinguish this from refitting on every test set. |
+| Distance and filtration | Fix the distance function, filtration range, and homology dimensions. |
+| Diagram processing | Predefine handling of infinite intervals, empty diagrams, and small persistence values. |
+| Labels | Distinguish overall from class-conditional structure and indicate whether labels are used. |
+| Computation | Record throughput by sample size and feature dimension, peak memory, and total site-selection cost. |
 
-차원 축소 후의 위상 변화가 원래 고차원 표현의 위상 변화를 그대로 보존한다고 가정하지 않습니다. 표본 수가 적어 클래스별 구조가 불안정하면 해당 분석의 해석 범위를 제한합니다.
+We do not assume that topological changes after dimensionality reduction faithfully preserve changes in the original high-dimensional representations. If small sample sizes make class-specific structure unstable, the scope of interpretation is limited accordingly.
 
-### 12.4 위상 단순화는 실패와 같은 뜻이 아닙니다
+### 12.4 Topological Simplification Does Not Mean Failure
 
-분류를 성공적으로 수행하는 과정에서도 위상적 단순화가 관찰될 수 있다는 선행연구가 있습니다. 따라서 연결 성분이나 구멍의 감소를 곧바로 정보 붕괴나 오분류의 증거로 사용하지 않습니다. [R3]
+Prior work has observed topological simplification during successful classification. Thus, reductions in connected components or holes are not directly used as evidence of information collapse or misclassification. [R3]
 
-레이블을 사용하지 않는 점군의 위상은 클래스 의미의 변화나 샘플 대응 관계를 충분히 반영하지 못할 수 있습니다. diagram이 비슷하다고 기능이 같다고 결론 내리지 않으며, 클래스 내·사이 구조와 실제 개입 결과를 함께 확인합니다.
+The topology of unlabeled point clouds may not adequately reflect changes in class semantics or sample correspondence. Similar diagrams do not establish equivalent function; within-/between-class structure and actual intervention outcomes are examined together.
 
-일반적인 PH 거리와 TopoLip은 같은 지표가 아닙니다. 논문의 정의를 그대로 구현한 경우에만 TopoLip 재현이라고 표시하고, 수정했다면 변형 방법으로 명시합니다. [R7]
+Generic PH distances and TopoLip are not the same metric. An implementation is labeled a TopoLip reproduction only if it follows the paper's definition exactly; modifications are explicitly identified as variants. [R7]
 
-### 12.5 TDA 채택 기준
+### 12.5 Criteria for Adopting TDA
 
-TDA는 기본 지표 대비 미관측 손상의 선택 regret를 줄이거나, 기존 지표가 실패하는 조건을 재현 가능하게 구분할 때 유효한 확장으로 봅니다. 약한 상관관계 하나나 시각적으로 다른 diagram만으로 필요성을 주장하지 않습니다.
+TDA is considered a useful extension if it reduces unseen-corruption selection regret relative to basic metrics or reproducibly distinguishes conditions in which existing metrics fail. A single weak correlation or visually different diagrams do not establish its necessity.
 
-최근접 이웃 보존율처럼 더 저렴한 구조 지표가 같은 성능을 낸다면, 계산 비용이 큰 TDA를 주방법으로 채택할 이유가 약합니다.
+If a cheaper structural metric such as nearest-neighbor preservation achieves the same performance, there is little reason to adopt computationally expensive TDA as the main method.
 
-## 13. 평가 지표와 통계 설계
+## 13. Evaluation Metrics and Statistical Design
 
-### 13.1 주평가와 보조평가
+### 13.1 Primary and Secondary Evaluation
 
-**주평가:** 관측 자료만으로 고른 위치의 미관측 손상 평균 정확도 개선과 실제 보정 regret를 사용합니다. 이때 보정 예산, 손상 집합, 평균 가중치는 사전에 고정합니다. 단순 위치 선택 및 검증 집합 전수 선택과의 직접적인 성능 차이도 함께 제시합니다.
+**Primary evaluation:** Use mean accuracy improvement on unseen corruptions and actual adaptation regret at sites selected using only observed data. The adaptation budget, corruption set, and averaging weights are fixed in advance. Direct performance differences against simple site-selection methods and exhaustive validation selection are also reported.
 
-**보조평가:** 진단용 부분 교체 regret, margin 변화, 위치 순위 관계, 손상 유발 실패의 회복률, 새 오류 발생률, clean 정확도 변화, 예산별 회복 곡선, 위치 선택 비용을 사용합니다.
+**Secondary evaluation:** Use diagnostic partial-patching regret, margin change, site-rank relationships, recovery rate on corruption-induced failures, new-error rate, clean-accuracy change, budget-specific recovery curves, and site-selection cost.
 
-일부 손상만 사용하는 실험에서는 해당 손상 집합의 평균 정확도·오류율이라고 명시합니다. 표준 mCE와 같은 이름을 사용하려면 원래 benchmark의 정의와 대상 손상 구성을 따릅니다. [R12]
+Experiments using only some corruptions are explicitly reported as mean accuracy/error on that corruption set. Names such as standard mCE are used only when the original benchmark definition and corruption composition are followed. [R12]
 
-### 13.2 집계 단위와 불확실성
+### 13.2 Aggregation Units and Uncertainty
 
-원본 이미지 단위의 paired bootstrap을 기본으로 사용합니다. 하나의 원본 이미지에 해당하는 clean 및 여러 손상·강도 버전을 함께 재표집하여 대응 관계를 유지합니다. 클래스 균형이 필요한 설정에서는 클래스 내 재표집 후 집계합니다.
+The default is a paired bootstrap over original images. A clean image and its corruption/severity variants are resampled together to preserve correspondence. When class balance is required, resampling is performed within classes before aggregation.
 
-마스크 seed와 보정 모듈 학습 seed의 변동성을 따로 기록합니다. 이미지 불확실성과 seed 불확실성을 합치는 경우에는 계층적 재표집 절차를 명시합니다. 층, 토큰, 손상 강도별 결과를 모두 독립 표본으로 취급하지 않습니다.
+Variability across mask seeds and adapter-training seeds is recorded separately. If image and seed uncertainty are combined, the hierarchical resampling procedure is specified. Results across layers, tokens, and corruption severities are not all treated as independent samples.
 
-시작 설정으로 진단 마스크는 20개 seed, 학습형 보정은 3개 seed를 고려할 수 있습니다. 충분성은 관측된 변동성과 계산 자원을 보고 판단하되, 반복 수를 유리한 결과에 맞춰 선택하지 않습니다.
+Initial settings may use 20 diagnostic mask seeds and 3 learned-adaptation seeds. Adequacy is assessed based on observed variability and computational resources, without choosing repeat counts to favor particular outcomes.
 
-### 13.3 다중 비교와 선택 편향
+### 13.3 Multiple Comparisons and Selection Bias
 
-주요 가설, 주평가 지표, 주예산을 먼저 정하고 나머지는 탐색적 분석으로 표시합니다. 여러 지표·예산·손상에서의 가설 검정을 함께 수행할 경우에는 Holm 방식 등 사전 지정한 다중 비교 통제를 적용합니다.
+Primary hypotheses, primary evaluation metrics, and the primary budget are specified first; the rest are labeled exploratory analyses. Joint hypothesis testing across multiple metrics, budgets, and corruptions uses prespecified multiple-comparison control, such as the Holm method.
 
-단순한 유의확률보다 효과 크기와 신뢰구간을 우선 보고합니다. 전수평가 최댓값은 표본 잡음에 의해 낙관적일 수 있으므로, 사후 참조와의 차이만으로 주장을 구성하지 않고 검증 집합에서 선택한 실행 가능한 비교군과의 차이도 제시합니다.
+Effect sizes and confidence intervals take priority over p-values alone. Because exhaustive-evaluation maxima may be optimistic due to sample noise, claims are not based solely on gaps to post-hoc references; we also report differences against feasible baselines selected on validation data.
 
-### 13.4 최적 위치를 하나로 강제하지 않습니다
+### 13.4 Do Not Force a Unique Optimal Site
 
-복수 위치의 차이가 작다면 허용 오차 $\tau$ 안에 드는 위치 집합을 보고합니다.
+When differences between sites are small, we report the set of sites within tolerance $\tau$.
 
 $$
 \mathcal L_{\tau}(B)
@@ -681,157 +681,157 @@ $$
 \right\}.
 $$
 
-$\tau$는 검증 자료와 실질적인 성능 차이의 기준을 고려해 사전에 정합니다. 테스트 결과를 보고 좋은 위치가 많아 보이도록 변경하지 않습니다.
+$\tau$ is set in advance based on validation data and a criterion for practically meaningful performance differences. It is not changed after inspecting test results to make more sites appear favorable.
 
-지표가 정확히 한 층을 맞혔는지뿐 아니라, 효과가 비슷한 위치 집합에 들어갔는지와 실제 regret가 얼마인지를 함께 평가합니다.
+We evaluate not only whether a metric identifies one exact layer, but also whether it selects a member of the equivalence set and what actual regret it incurs.
 
-## 14. 기본 실험 범위와 확장 범위
+## 14. Basic and Extended Experimental Scope
 
-### 14.1 핵심 검증에 필요한 최소 구성
+### 14.1 Minimum Configuration for the Core Validation
 
-아래는 바로 실험 설정으로 구체화할 수 있는 시작안입니다. 수치는 모두 결과와 무관하게 고정할 초기 후보이며, 계산 자원에 맞게 조정한 경우 그 이유와 설정을 기록합니다.
+The following is a starting plan that can be directly instantiated as an experimental configuration. All numbers are initial candidates to be fixed independently of results; adjustments for computational resources are documented with their reasons and settings.
 
-| 항목 | 기본 구성 |
+| Item | Default configuration |
 |---|---|
-| 모델 | 비증류형 DeiT-S/16 체크포인트 하나 |
-| 과제 | 원래 분류기를 유지한 ImageNet 이미지 분류 |
-| 개입 위치 | 12개 블록 출력 전체를 후보로 사용 |
-| 관측 손상 | Gaussian noise, defocus blur |
-| 미관측 손상 | contrast, JPEG compression |
-| 손상 강도 | 예비 비교는 1·3·5, 확장 시 사용 benchmark의 전체 강도 |
-| 표현 지표 | 정규화 거리, cosine distance, CKA, 명시적인 손상형 criticality 변형 |
-| 기본 마스크 | 채널 단위 무작위 고정 마스크 |
-| 진단 예산 | 채널 비율 1%·5%·10%·20%, 기본 $\alpha=1$ |
-| 진단 보조 조건 | $\alpha=0.25,0.5$, norm 상한, 관측 자료 기반 고정 마스크 |
-| 실제 보정 | 단일 residual 병목 MLP, 기본 병목 차원 32 |
-| 실제 보정 예산 확장 | 병목 차원 8·32·64 및 실제 파라미터·연산량 보고 |
-| 주요 비교군 | 무개입, 앞·중간·뒤 고정, 무작위, 지표 선택, 소규모 직접 탐색, 검증 전수 선택 |
-| 재현성 | 이미지 ID 분리, 고정 seed, 원본 prediction과 개입 후 prediction 저장 |
+| Model | One non-distilled DeiT-S/16 checkpoint |
+| Task | ImageNet image classification with the original classifier retained |
+| Intervention sites | Outputs of all 12 blocks as candidates |
+| Observed corruptions | Gaussian noise, defocus blur |
+| Unseen corruptions | contrast, JPEG compression |
+| Corruption severity | 1, 3, and 5 for preliminary comparisons; all severities of the chosen benchmark for extensions |
+| Representation metrics | Normalized distance, cosine distance, CKA, explicit corruption-based criticality variant |
+| Default mask | Random fixed channel mask |
+| Diagnostic budgets | Channel fractions of 1%, 5%, 10%, and 20%, with default $\alpha=1$ |
+| Supplementary diagnostic conditions | $\alpha=0.25,0.5$, norm cap, fixed masks based on observed data |
+| Actual adaptation | Single residual bottleneck MLP, default bottleneck width 32 |
+| Extended adaptation budgets | Bottleneck widths 8, 32, and 64, with actual parameters and computation reported |
+| Main baselines | No intervention, fixed early/middle/late sites, random site, metric selection, small direct search, exhaustive validation selection |
+| Reproducibility | Image-ID splits, fixed seeds, saved original and post-intervention predictions |
 
-처음부터 모든 지표·마스크·예산·모델의 조합을 동시에 실행하지 않습니다. 기본 구성으로 관찰–진단–실제 보정 연결을 검증하고, 결과를 구분하는 데 필요한 요인만 추가합니다.
+We do not initially run every combination of metrics, masks, budgets, and models. The default configuration tests the observation–diagnostic–adaptation connections, and only factors needed to distinguish the results are added.
 
-### 14.2 핵심 실험 묶음
+### 14.2 Core Experiment Groups
 
-| 실험 | 바꾸는 요소 | 확인할 내용 |
+| Experiment | Factors varied | Question examined |
 |---|---|---|
-| **E1. 표현–부분 교체 관계** | 블록 위치와 표현 지표 | 관찰한 변화량이 진단 효과를 예측하는지 확인합니다. |
-| **E2. 예산별 위치 선택** | 수정 비율·강도·norm 상한 | 위치 순위 변화가 실질적인 예산 효과인지 확인합니다. |
-| **E3. 미관측 손상 일반화** | 평가 손상 종류·계열 | 선택을 고정한 상태에서 일반화되는지 확인합니다. |
-| **E4. 진단–학습형 보정 연결** | 위치와 보정 용량 | 진단 결과가 실제 배포 가능한 복구에도 유효한지 확인합니다. |
-| **E5. 구조 간 재검증** | ViT와 ResNet 계열 모델 | 결과가 단일 체크포인트에만 의존하는지 확인합니다. |
-| **E6. 지표 확장** | 과제 민감도·이웃 구조·TDA | 기본 지표보다 추가적인 선택 가치가 있는지 확인합니다. |
+| **E1. Representation–partial-patching relationship** | Block site and representation metric | Do observed change magnitudes predict diagnostic effects? |
+| **E2. Budget-specific site selection** | Modification fraction, strength, and norm cap | Do changes in site rankings reflect meaningful budget effects? |
+| **E3. Unseen-corruption generalization** | Evaluation corruption types and families | Does performance generalize with selection fixed? |
+| **E4. Diagnostic–learned-adaptation connection** | Site and adapter capacity | Do diagnostic results remain useful for deployable repair? |
+| **E5. Validation across architectures** | ViT- and ResNet-family models | Do results depend on a single checkpoint? |
+| **E6. Metric extensions** | Task sensitivity, neighborhood structure, TDA | Is there additional selection value beyond basic metrics? |
 
-E1–E4가 핵심 연구 범위입니다. E5는 주장 범위를 넓히기 위한 재검증이며, E6는 필요성이 확인될 때 수행하는 확장입니다.
+E1–E4 form the core scope. E5 provides validation to broaden the scope of claims, and E6 is an extension conducted when its need has been established.
 
-### 14.3 이번 연구의 기본 범위에서 제외하는 내용
+### 14.3 Topics Excluded from the Basic Scope
 
-객체 검출·분할, 자율주행 전체 시스템, 멀티모달 fusion, 모든 모델 구조를 망라한 비교, 다중 위치 동시 개입, 입력별 동적 라우팅은 기본 범위에서 제외합니다.
+Object detection and segmentation, full autonomous-driving systems, multimodal fusion, comparisons spanning all model architectures, simultaneous multisite interventions, and per-input dynamic routing are outside the basic scope.
 
-적대적 공격은 자연적 손상과 별도의 확장 과제로 둡니다. 자연적 손상에서의 개선을 적대적 강건성 개선으로 표현하지 않습니다. 공격 평가를 추가한다면 실제 보정된 모델을 공격 대상으로 해야 하며, 기존 backbone에만 만든 공격으로 일반적인 방어 효과를 주장하지 않습니다.
+Adversarial attacks are a separate extension from natural corruptions. Improvements on natural corruptions are not described as improvements in adversarial robustness. If attack evaluation is added, attacks must target the actual adapted model; attacks generated only against the original backbone do not support general defense claims.
 
-## 15. 주요 위험 요인과 해석 원칙
+## 15. Main Risks and Interpretation Principles
 
-| 위험 요인 | 잘못된 해석 | 대응 |
+| Risk | Incorrect interpretation | Response |
 |---|---|---|
-| 전체 상태 또는 readout 전체 교체 | 작은 비용으로 중요한 층을 발견했다고 해석합니다. | 구현 검증과 본실험을 분리하고 부분 개입만 주평가에 사용합니다. |
-| 표현 차원의 차이 | 같은 채널 비율이 같은 자원이라고 가정합니다. | 수정 원소 수, norm, 추가 파라미터, 연산량을 함께 기록합니다. |
-| 표현의 좌표계 의존성 | 특정 채널이 보편적인 의미 단위라고 가정합니다. | 기본 결과를 해당 체크포인트의 좌표계와 마스크 정책에 한정합니다. |
-| 사후 위치 선택 | 미관측 손상을 보고 고른 위치를 일반화 결과로 제시합니다. | 관측 자료에서 선택 규칙을 고정하고 사후 참조와 구분합니다. |
-| 마스크 최적화의 혼입 | 위치의 효과와 더 좋은 채널 선택의 효과를 혼동합니다. | 동일 마스크 정책 안에서 위치를 비교합니다. |
-| 진단의 특권 정보 | clean 표현 주입을 실제로 가능한 복구라고 해석합니다. | 진단용 부분 교체와 손상 입력 전용 보정을 분리합니다. |
-| 보정 모듈의 한계 | 작은 모듈의 실패를 비가역적 정보 소실로 해석합니다. | 용량·학습량·목적 함수 의존성을 분석하고 정보 소실은 주장하지 않습니다. |
-| seed와 표본 잡음 | 최상위 층이 바뀐 것만으로 구조적 전이를 선언합니다. | 신뢰구간, 효과 크기, 동등 위치 집합을 함께 봅니다. |
-| 강한 손상의 의미 변화 | 입력의 시각 정보 훼손과 모델 내부 실패를 구분하지 않습니다. | 강도별 결과와 표본 검사를 병행하고 의미 보존을 무조건 가정하지 않습니다. |
-| topological simplification | 위상 단순화 자체를 실패로 봅니다. | 기능과 실제 개입 결과로 별도 검증합니다. |
-| 선택 비용 누락 | 비싼 지표나 전수학습을 저비용 선택으로 표현합니다. | 지표·탐색·학습 비용을 각각 계산합니다. |
-| 모델 구조 일반화 | 체크포인트 하나의 결과를 CNN·ViT 전체로 일반화합니다. | 학습 조건과 용량을 기록하고 주장 범위를 제한합니다. |
+| Full-state or full-readout replacement | Interpreting the result as discovering an important layer at low cost. | Separate implementation checks from the main experiment and use only partial interventions for primary evaluation. |
+| Different representation dimensions | Assuming that the same channel fraction means the same resources. | Record modified element counts, norms, added parameters, and computation together. |
+| Coordinate dependence of representations | Assuming that particular channels are universal semantic units. | Limit baseline results to the checkpoint's coordinate system and mask policy. |
+| Post-hoc site selection | Presenting a site chosen after observing unseen corruptions as a generalization result. | Fix selection rules on observed data and distinguish them from post-hoc references. |
+| Confounding with mask optimization | Confusing site effects with better channel-selection effects. | Compare sites within the same mask policy. |
+| Privileged diagnostic information | Interpreting clean-representation injection as practically feasible repair. | Separate diagnostic partial patching from adaptation using only corrupted inputs. |
+| Adapter limitations | Interpreting a small module's failure as irreversible information loss. | Analyze dependence on capacity, training amount, and objective, without claiming information loss. |
+| Seed and sample noise | Declaring a structural transition merely because the top layer changes. | Examine confidence intervals, effect sizes, and equivalence sets together. |
+| Semantic changes under severe corruption | Failing to distinguish damaged visual input information from internal model failure. | Combine severity-specific results with sample inspection, without assuming semantic preservation unconditionally. |
+| Topological simplification | Treating simplification itself as failure. | Validate separately through function and actual intervention outcomes. |
+| Omitted selection costs | Describing expensive metrics or exhaustive training as low-cost selection. | Account separately for metric, search, and training costs. |
+| Generalization across model architectures | Generalizing one checkpoint's results to all CNNs or ViTs. | Record training conditions and capacity and limit the scope of claims. |
 
-부분 교체로 구성한 표현은 원래 모델이 자연스럽게 만드는 표현 분포에서 벗어날 수 있습니다. 개입 강도별 결과와 norm 통제를 통해 민감도를 확인하되, 인위적 개입의 모든 분포 차이를 제거했다고 주장하지 않습니다.
+Representations constructed through partial patching may fall outside the distribution naturally produced by the original model. We examine sensitivity through intervention-strength comparisons and norm controls, without claiming to eliminate all distributional differences introduced by artificial interventions.
 
-CKA는 표현 유사도이며, probing 성능은 특정 판독기가 정보를 얼마나 읽어내는지에 관한 값입니다. 둘을 mutual information의 직접 측정이나 비가역적 정보 소실의 증명으로 사용하지 않습니다. [R1], [R4]
+CKA measures representation similarity, while probing performance measures how well a particular readout extracts information. Neither is used as a direct measure of mutual information or proof of irreversible information loss. [R1], [R4]
 
-## 16. 예상 결과의 유형과 연구 판단 기준
+## 16. Possible Outcomes and Research Decision Criteria
 
-이 절은 예상 성능값이 아니라, 가능한 결과에 따라 어떤 결론을 내릴지 정한 해석 기준입니다.
+This section specifies how possible outcomes will be interpreted, rather than predicting performance values.
 
-### 16.1 기존 표현 지표가 실제 보정 위치까지 잘 예측하는 경우
+### 16.1 Existing Representation Metrics Predict Actual Adaptation Sites Well
 
-표현 분석을 위치 탐색의 대리 수단으로 사용할 수 있는 근거가 됩니다. 다만 직접 탐색 대비 비용 이점과 미관측 손상에서의 안정성까지 확인해야 실용적인 선택 방법이라고 주장할 수 있습니다.
+This would support using representation analysis as a proxy for site search. However, practical selection claims also require cost advantages over direct search and stability on unseen corruptions.
 
-### 16.2 진단 효과는 예측하지만 실제 보정에는 잘 연결되지 않는 경우
+### 16.2 Metrics Predict Diagnostic Effects but Transfer Poorly to Actual Adaptation
 
-표현 지표가 잘못되었다고 단정하기보다, **clean 정보를 제공하는 개입과 스스로 보정을 학습하는 문제의 차이**를 중심 결과로 다룹니다. 보정 용량과 목적 함수를 바꿔도 차이가 남는지 확인합니다.
+Rather than concluding that representation metrics are wrong, the central result would be **the difference between supplying clean information through intervention and learning to produce corrections**. We test whether this discrepancy persists when adapter capacity and objectives change.
 
-### 16.3 예산이나 손상에 따라 효과적인 위치가 달라지는 경우
+### 16.3 Effective Sites Vary with Budget or Corruption
 
-단일한 보편적 critical layer보다 조건부 위치 선택이 적절하다는 근거가 될 수 있습니다. 새로운 선택 방법은 예산을 반영했을 때 고정 위치 및 기존 지표보다 실제 regret를 줄이는지 검증합니다.
+This may support conditional site selection rather than a single universal critical layer. Any new selection method is tested for whether accounting for budget reduces actual regret relative to fixed sites and existing metrics.
 
-### 16.4 고정 위치가 대부분의 조건에서 충분한 경우
+### 16.4 Fixed Sites Are Sufficient under Most Conditions
 
-복잡한 지표의 필요성이 낮다는 결과입니다. 표현 차이가 흥미롭게 보이더라도 실질적인 위치 선택 이점이 없다면 그 한계를 명시합니다. 사후적으로 유리한 손상만 골라 새 방법의 필요성을 만들지 않습니다.
+This would indicate limited need for complex metrics. Even if representation differences appear interesting, we explicitly state the limitation if they provide no practical site-selection advantage. We do not retrospectively select favorable corruptions to manufacture a need for a new method.
 
-### 16.5 위치별 차이가 작거나 반복 실험에서 불안정한 경우
+### 16.5 Site Differences Are Small or Unstable across Repeated Experiments
 
-강한 critical layer 주장을 하지 않습니다. 유사한 성능의 위치 집합, 표본 수에 대한 민감도, 마스크·학습 seed의 영향을 보고하고, 실용적 선택에서는 계산이나 구현이 쉬운 위치를 고려합니다.
+We do not make strong critical-layer claims. We report equivalence sets, sensitivity to sample size, and the effects of mask and training seeds, and consider sites with simpler computation or implementation for practical selection.
 
-### 16.6 TDA가 추가적인 이점을 주지 않는 경우
+### 16.6 TDA Provides No Additional Benefit
 
-TDA를 주방법에서 제외하거나 한계 분석으로 남깁니다. 위상적 표현이라는 이유만으로 유지하지 않습니다. 추가 성능이 있더라도 비용과 안정성까지 만족해야 활용 근거가 충분합니다.
+TDA is excluded from the main method or retained as a limitations analysis. It is not retained merely because it is topological. Even if it improves performance, cost and stability must also be satisfactory to justify its use.
 
-### 16.7 연구적 기여가 성립하기 위한 기준
+### 16.7 Criteria for Establishing a Research Contribution
 
-최소한 하나의 시각화나 상관관계를 넘어, **재현 가능한 위치 선택 성능 또는 재현 가능한 선택 실패 조건**을 보여야 합니다. 가설이 지지되지 않는 결과도 보고할 수 있지만, 작은 예비 실험에서 차이가 없었다는 사실만으로 일반적인 부정 결론이나 논문 기여가 자동으로 성립하지는 않습니다.
+The study must go beyond a single visualization or correlation to demonstrate **reproducible site-selection performance or reproducible conditions of selection failure**. Results that do not support the hypotheses can be reported, but the absence of differences in a small preliminary experiment does not automatically establish a general negative conclusion or a paper contribution.
 
-## 17. 기대 기여와 결과물
+## 17. Expected Contributions and Deliverables
 
-### 17.1 기대 기여
+### 17.1 Expected Contributions
 
-**문제 정의:** 층별 표현 변화를 예산이 제한된 복구 위치 선택의 관점에서 평가하는 명시적 과제를 제시합니다.
+**Problem definition:** Specify an explicit task for evaluating layer-wise representation changes through budget-constrained repair site selection.
 
-**검증 체계:** 표현 지표, 진단용 개입, 실제 보정의 세 관계를 분리하고, 위치 선택 regret·미관측 손상·비용을 함께 평가합니다.
+**Validation framework:** Separate the three relationships among representation metrics, diagnostic interventions, and actual adaptation, and jointly evaluate site-selection regret, unseen corruptions, and cost.
 
-**경험적 결과:** 어떤 조건에서 단순 지표나 고정 위치가 충분하고, 어떤 조건에서 실패하는지 확인합니다. 결과가 뒷받침할 때만 개선된 위치 선택 방법을 제안합니다.
+**Empirical findings:** Determine when simple metrics or fixed sites suffice and when they fail. Propose improved site-selection methods only when supported by results.
 
-### 17.2 주요 그림과 표의 설계
+### 17.2 Planned Main Figures and Tables
 
-| 결과물 | 담을 내용 |
+| Deliverable | Content |
 |---|---|
-| 층별 표현 변화와 진단 효과 비교 | 같은 모델·손상에서 변화량 곡선과 회복량 곡선을 나란히 제시합니다. |
-| 위치–예산별 회복량 표 또는 heatmap | 수정 규모에 따라 효과적인 위치가 달라지는지 보여줍니다. |
-| 진단–실제 보정 비교 | 위치별 부분 교체 효과와 학습형 보정 효과의 관계를 제시합니다. |
-| 위치 선택 regret 표 | 고정 위치·기존 지표·직접 탐색을 예산별로 비교합니다. |
-| 미관측 손상 성능 표 | 관측 자료에서 고정한 선택이 다른 손상에서도 유효한지 보여줍니다. |
-| 비용–성능 비교 | 지표 계산과 모듈 학습을 포함한 비용 대비 선택 효과를 제시합니다. |
-| 대조군·민감도 표 | norm, 마스크, seed, 표현 요약 방식에 대한 결과 안정성을 제시합니다. |
+| Layer-wise representation changes versus diagnostic effects | Present change-magnitude and recovery curves side by side for the same model and corruption. |
+| Site–budget recovery table or heatmap | Show whether effective sites vary with modification scale. |
+| Diagnostic–adaptation comparison | Present the relationship between partial-patching and learned-adaptation effects at each site. |
+| Site-selection regret table | Compare fixed sites, existing metrics, and direct search by budget. |
+| Unseen-corruption performance table | Show whether selections fixed on observed data remain effective for other corruptions. |
+| Cost–performance comparison | Present selection effects relative to costs including metric computation and module training. |
+| Controls and sensitivity table | Present stability with respect to norms, masks, seeds, and representation summaries. |
 
-실험 전 제안서에는 가상의 정확도나 예상 개선폭을 실제 결과처럼 넣지 않습니다.
+The pre-experimental proposal does not present hypothetical accuracies or expected gains as actual results.
 
-### 17.3 재현성 결과물
+### 17.3 Reproducibility Deliverables
 
-실험 설정, 원본 이미지 분리 목록, 체크포인트 식별 정보, feature extraction·intervention·adapter 학습 코드, 지표 계산 코드, 원본 결과 테이블과 분석 스크립트를 연구 결과물로 구성합니다.
+Research deliverables include experimental configurations, original-image split lists, checkpoint identifiers, feature-extraction, intervention, and adapter-training code, metric-computation code, raw results tables, and analysis scripts.
 
-공개 데이터의 원본 이미지는 이용 조건에 맞게 취급하고, 재배포가 적절하지 않은 자료는 이미지 ID와 재현 절차만 제공하는 방식을 고려합니다.
+Original images from public datasets are handled according to their terms of use. For data unsuitable for redistribution, we consider providing only image IDs and reproduction procedures.
 
-## 18. 구현 및 기록 요구사항
+## 18. Implementation and Logging Requirements
 
-### 18.1 모듈 분리
+### 18.1 Module Separation
 
-| 모듈 | 책임 |
+| Module | Responsibility |
 |---|---|
-| `data_protocol` | 원본 이미지 ID 분리, 손상 종류·강도·seed 고정 |
-| `feature_extractor` | 블록 경계 정의, CLS·patch 표현 추출, shape 확인 |
-| `representation_metrics` | 정규화 거리, CKA, 기타 지표 계산 |
-| `patching_engine` | 마스크 정책, 부분 교체, norm 상한, 대조군 실행 |
-| `adapter_training` | backbone 고정, 보정 모듈 학습, 비용 기록 |
-| `site_selection` | 관측 자료 기반 위치 선택, 무개입·고정 위치 기준 |
-| `evaluation` | 전체 정확도, 회복·새 오류, regret, 미관측 평가 |
-| `statistics` | paired bootstrap, seed 변동성, 선택 안정성 분석 |
+| `data_protocol` | Split original image IDs; fix corruption types, severities, and seeds |
+| `feature_extractor` | Define block boundaries, extract CLS/patch representations, verify shapes |
+| `representation_metrics` | Compute normalized distances, CKA, and other metrics |
+| `patching_engine` | Implement mask policies, partial patching, norm caps, and controls |
+| `adapter_training` | Freeze the backbone, train adapters, record costs |
+| `site_selection` | Select sites from observed data; implement no-intervention and fixed-site baselines |
+| `evaluation` | Evaluate overall accuracy, recovery/new errors, regret, and unseen corruptions |
+| `statistics` | Analyze paired bootstrap uncertainty, seed variability, and selection stability |
 
-캐시에는 필요한 표현만 저장합니다. 모든 토큰·모든 층·모든 손상 결과를 무조건 저장하지 않고, 원본 prediction, 지표용 요약 표현, 필요한 개입용 표현을 구분합니다. 저장 정밀도가 개입 결과에 영향을 주는지도 검증합니다.
+Only necessary representations are cached. Rather than unconditionally saving every token, layer, and corruption result, we distinguish original predictions, summary representations for metrics, and representations required for interventions. We also verify whether storage precision affects intervention results.
 
-### 18.2 결과 테이블의 필수 필드
+### 18.2 Required Fields in Results Tables
 
-각 결과는 최소한 다음 정보를 추적할 수 있어야 합니다.
+Each result must allow tracking of at least the following information.
 
 ```text
 experiment_id
@@ -848,116 +848,116 @@ baseline_margin / post_intervention_margin
 selection_cost / training_compute / inference_overhead
 ```
 
-집합 수준 점수인 CKA·PH에는 사용한 이미지 집합 ID와 표본 수를 별도로 저장합니다. 개별 이미지 결과와 집합 수준 결과를 같은 행 단위의 독립 표본처럼 처리하지 않습니다.
+For aggregate scores such as CKA and PH, the image-set ID and sample size are saved separately. Per-image and aggregate results are not treated as independent samples with the same row-level unit.
 
-### 18.3 실험 실행 전 확인 사항
+### 18.3 Pre-Run Checks
 
-진단과 평가에서는 모델을 평가 모드로 고정하여 dropout·stochastic depth 등 확률적 요소가 clean–corrupted 차이에 섞이지 않도록 합니다. 사용한 수치 정밀도와 출력 비교 허용 오차도 기록합니다.
+For diagnostics and evaluation, the model is fixed in evaluation mode so that stochastic components such as dropout and stochastic depth do not confound clean–corrupted differences. Numerical precision and output-comparison tolerances are recorded as well.
 
-개입하지 않은 모델의 출력 재현, clean–corrupted ID 대응, 블록 경계의 실제 tensor shape, 무개입과 전체 상태 교체 대조군, gradient 경로, 데이터 집합 간 원본 ID 중복 여부를 먼저 확인합니다.
+First verify reproduction of the unmodified model's outputs, clean–corrupted ID correspondence, actual tensor shapes at block boundaries, no-intervention and full-state-replacement controls, gradient paths, and the absence of overlapping original IDs across splits.
 
-위치 선택 규칙이 테스트 레이블이나 미관측 손상 점수를 읽지 않는지도 확인합니다. 이러한 검증이 통과하지 않으면 위치별 차이를 연구 결과로 해석하지 않습니다.
+Also verify that site-selection rules do not access test labels or unseen-corruption scores. If these checks fail, differences between sites are not interpreted as research findings.
 
-## 19. 별도 후속 질문: 정보 소실과 정보 활용의 구분
+## 19. Separate Follow-Up Question: Distinguishing Information Loss from Information Use
 
-본 연구와 연결되지만 별도 범위로 남길 질문은 다음과 같습니다.
+The following question is related to this study but remains outside its scope.
 
-> 후반 층에서 정답을 틀렸을 때, 정답에 필요한 정보가 사라진 것인가, 표현에 남아 있지만 최종 판단에 사용되지 못한 것인가?
+> When a late layer produces an incorrect answer, has the information needed for the correct answer disappeared, or does it remain in the representation but fail to inform the final decision?
 
-중간 분류기는 맞지만 최종 분류기는 틀리는 overthinking 현상은 이미 Shallow-Deep Networks에서 다뤄졌습니다. 따라서 중간층에 linear probe를 붙이는 것만으로 독립적인 새 기여라고 주장하지 않습니다. [R15]
+Overthinking, where an intermediate classifier is correct but the final classifier is wrong, has already been studied in Shallow-Deep Networks. Thus, merely attaching linear probes to intermediate layers is not claimed as an independent new contribution. [R15]
 
-이 방향을 확장한다면 모양·색·배경과 같은 요인을 통제하고, 여러 복잡도의 판독기와 모델 내부 개입을 함께 사용해야 합니다. 이를 통해 **읽어낼 수 있는 정보**, **실제 분류에 사용되는 정보**, **허용된 보정기로 활용할 수 있는 정보**를 구분합니다.
+Extending this direction would require controlling factors such as shape, color, and background and combining readouts of varying complexity with internal model interventions. This would distinguish **information that can be read out**, **information actually used for classification**, and **information usable by an admissible adapter**.
 
-본 연구의 학습형 보정 실패는 특정한 모듈과 학습 절차에서의 실패입니다. 그것만으로 모든 가능한 판독기와 개입에도 정보가 복구 불가능하다는 결론을 내리지 않습니다.
+Failure of learned adaptation in this study is failure under a particular module and training procedure. It does not imply that information is unrecoverable by every possible readout and intervention.
 
-## 20. 최종 연구 제안
+## 20. Final Research Proposal
 
-본 연구는 **“표현이 어디에서 크게 달라지는가”와 “어디를 조금 고치면 판단이 회복되는가”를 동일한 질문으로 취급하지 않는 것**에서 출발합니다.
+This study starts by **not treating “where representations change substantially” and “where a small modification restores the decision” as the same question**.
 
-하나의 ViT 모델에서 층별 변화량과 제한된 부분 교체 효과를 비교하고, 그 위치 선택이 미관측 손상과 실제 보정 모듈에까지 연결되는지 검증합니다. 단순한 지표와 고정 위치 선택이 충분한지 먼저 평가한 뒤, 필요성이 확인될 때만 예산을 반영한 선택기나 TDA를 추가합니다.
+We compare layer-wise change magnitudes with limited partial-patching effects in one ViT model and test whether the resulting site selections transfer to unseen corruptions and actual adapters. We first evaluate whether simple metrics and fixed-site selection suffice, adding budget-aware selectors or TDA only when their need is established.
 
-성공적인 결과는 반드시 더 복잡한 방법이나 하나의 critical layer를 제시하는 형태일 필요는 없습니다. **내부 표현을 분석해 얻은 근거가 실제 복구 의사결정에 언제 유효하고 언제 유효하지 않은지, 그 차이를 통제된 실험과 비용 평가로 설명하는 것**이 본 연구의 중심 목표입니다.
+A successful outcome need not introduce a more complex method or identify a single critical layer. The central goal is to **explain, through controlled experiments and cost evaluation, when evidence from internal representation analysis is valid for actual repair decisions and when it is not**.
 
 ---
 
-## 참고문헌 및 공식 자료
+## References and Official Resources
 
-문헌의 관찰 결과는 해당 연구의 모델·데이터·개입 조건에 한정해서 해석합니다. 아래에는 확인한 원문 또는 저자 공식 자료를 연결했습니다. 공개본 연도와 학회 출판 연도가 다른 경우 이를 구분합니다.
+Findings from the literature are interpreted within each study's model, data, and intervention conditions. The links below point to the checked original papers or official author resources. Release years and conference publication years are distinguished where they differ.
 
 ### R1. CKA
 
 Simon Kornblith, Mohammad Norouzi, Honglak Lee, Geoffrey Hinton. **Similarity of Neural Network Representations Revisited.** ICML 2019, PMLR 97:3519–3529.  
-[공식 논문 페이지](https://proceedings.mlr.press/v97/kornblith19a.html)
+[Official paper page](https://proceedings.mlr.press/v97/kornblith19a.html)
 
-### R2. CNN과 ViT의 표현 비교
+### R2. Comparing CNN and ViT Representations
 
 Maithra Raghu, Thomas Unterthiner, Simon Kornblith, Chiyuan Zhang, Alexey Dosovitskiy. **Do Vision Transformers See Like Convolutional Neural Networks?** NeurIPS 2021.  
-[저자 공개 원문](https://arxiv.org/abs/2108.08810)
+[Author-released paper](https://arxiv.org/abs/2108.08810)
 
-### R3. 층별 위상 변화
+### R3. Layer-Wise Topological Changes
 
 Gregory Naitzat, Andrey Zhitnikov, Lek-Heng Lim. **Topology of Deep Neural Networks.** Journal of Machine Learning Research, 21(184):1–40, 2020.  
-[공식 논문 페이지](https://jmlr.org/papers/v21/20-345.html)
+[Official paper page](https://jmlr.org/papers/v21/20-345.html)
 
-### R4. 표현 지표와 기능적 차이
+### R4. Representation Metrics and Functional Differences
 
-Frances Ding, Jean-Stanislas Denain, Jacob Steinhardt. **Grounding Representation Similarity Through Statistical Testing.** NeurIPS 2021. arXiv 공개본의 제목은 *Grounding Representation Similarity with Statistical Testing*입니다.  
-[공식 논문 페이지](https://proceedings.neurips.cc/paper/2021/hash/0c0bf917c7942b5a08df71f9da626f97-Abstract.html) · [저자 공개 원문](https://arxiv.org/abs/2108.01661)
+Frances Ding, Jean-Stanislas Denain, Jacob Steinhardt. **Grounding Representation Similarity Through Statistical Testing.** NeurIPS 2021. The arXiv version is titled *Grounding Representation Similarity with Statistical Testing*.  
+[Official paper page](https://proceedings.neurips.cc/paper/2021/hash/0c0bf917c7942b5a08df71f9da626f97-Abstract.html) · [Author-released paper](https://arxiv.org/abs/2108.01661)
 
 ### R5. ReSi
 
-Max Klabunde, Tassilo Wald, Tobias Schumacher, Klaus Maier-Hein, Markus Strohmaier, Florian Lemmerich. **ReSi: A Comprehensive Benchmark for Representational Similarity Measures.** ICLR 2025. 최초 arXiv 공개는 2024년이며, 확인한 v2는 2025년 수정본입니다.  
-[저자 공개 원문 및 학회 표기](https://arxiv.org/abs/2408.00531)
+Max Klabunde, Tassilo Wald, Tobias Schumacher, Klaus Maier-Hein, Markus Strohmaier, Florian Lemmerich. **ReSi: A Comprehensive Benchmark for Representational Similarity Measures.** ICLR 2025. The initial arXiv release was in 2024; the checked v2 is a 2025 revision.  
+[Author-released paper and conference listing](https://arxiv.org/abs/2408.00531)
 
 ### R6. CLAT
 
-Bhavna Gopal, Huanrui Yang, Jingyang Zhang, Mark Horton, Yiran Chen. **Boosting Adversarial Robustness with CLAT: Criticality Leveraged Adversarial Training.** ICML 2025, PMLR 267:20142–20161. 최초 공개본은 2024년이며 당시 제목과 최종 학회 제목이 다릅니다.  
-[공식 논문 페이지](https://proceedings.mlr.press/v267/gopal25a.html) · [공개 원문](https://arxiv.org/abs/2408.10204)
+Bhavna Gopal, Huanrui Yang, Jingyang Zhang, Mark Horton, Yiran Chen. **Boosting Adversarial Robustness with CLAT: Criticality Leveraged Adversarial Training.** ICML 2025, PMLR 267:20142–20161. The initial version was released in 2024 with a different title from the final conference paper.  
+[Official paper page](https://proceedings.mlr.press/v267/gopal25a.html) · [Released paper](https://arxiv.org/abs/2408.10204)
 
 ### R7. TopoLip
 
 Baiyuan Chen. **Is Smoothness the Key to Robustness? A Comparison of Attention and Convolution Models Using a Novel Metric.** arXiv:2410.17628, 2024.  
-[공개 원문](https://arxiv.org/abs/2410.17628)
+[Released paper](https://arxiv.org/abs/2410.17628)
 
 ### R8. NeuroShield-ViT
 
-Chashi Mahiul Islam, Samuel Jacob Chacko, Mao Nishino, Xiuwen Liu. **Mechanistic Understandings of Representation Vulnerabilities and Engineering Robust Vision Transformers.** arXiv:2502.04679, 2025. 학회 논문집에는 *NeuroShield-ViT: Mechanistic Understandings of Representation Vulnerabilities and Engineering Robust Vision Transformers*라는 제목으로 수록되었으며, ISVC 2025 논문집의 온라인 출판은 2026년입니다.  
-[공개 원문](https://arxiv.org/abs/2502.04679) · [출판사 공식 페이지](https://link.springer.com/chapter/10.1007/978-3-032-14492-8_3)
+Chashi Mahiul Islam, Samuel Jacob Chacko, Mao Nishino, Xiuwen Liu. **Mechanistic Understandings of Representation Vulnerabilities and Engineering Robust Vision Transformers.** arXiv:2502.04679, 2025. It appears in the conference proceedings under the title *NeuroShield-ViT: Mechanistic Understandings of Representation Vulnerabilities and Engineering Robust Vision Transformers*, and the ISVC 2025 proceedings were published online in 2026.  
+[Released paper](https://arxiv.org/abs/2502.04679) · [Official publisher page](https://link.springer.com/chapter/10.1007/978-3-032-14492-8_3)
 
 ### R9. Suppress and Diversify
 
-Jiangang Yang, Wenhui Shi, Xiaoran Xu, Wenyue Chong, Luqing Luo, Jing Xing, Jian Liu. **Suppress and Diversify: Refining Robust Pathways for Corruption Robustness.** arXiv:2608.06712, 2026. 저자 공개 페이지에 ICML 2026 채택으로 표기되어 있습니다.  
-[공개 원문](https://arxiv.org/abs/2608.06712) · [HTML 본문](https://arxiv.org/html/2608.06712v1)
+Jiangang Yang, Wenhui Shi, Xiaoran Xu, Wenyue Chong, Luqing Luo, Jing Xing, Jian Liu. **Suppress and Diversify: Refining Robust Pathways for Corruption Robustness.** arXiv:2608.06712, 2026. The authors' public page lists it as accepted at ICML 2026.  
+[Released paper](https://arxiv.org/abs/2608.06712) · [HTML text](https://arxiv.org/html/2608.06712v1)
 
-### R10. Activation patching의 평가 방법
+### R10. Evaluation Methods for Activation Patching
 
-Fred Zhang, Neel Nanda. **Towards Best Practices of Activation Patching in Language Models: Metrics and Methods.** arXiv:2309.16042, 2023 공개.  
-[공개 원문](https://arxiv.org/abs/2309.16042)
+Fred Zhang, Neel Nanda. **Towards Best Practices of Activation Patching in Language Models: Metrics and Methods.** arXiv:2309.16042, released in 2023.  
+[Released paper](https://arxiv.org/abs/2309.16042)
 
-### R11. Activation patching의 해석
+### R11. Interpreting Activation Patching
 
 Stefan Heimersheim, Neel Nanda. **How to use and interpret activation patching.** arXiv:2404.15255, 2024.  
-[공개 원문](https://arxiv.org/abs/2404.15255)
+[Released paper](https://arxiv.org/abs/2404.15255)
 
-### R12. ImageNet-C 및 평가 자료
+### R12. ImageNet-C and Evaluation Resources
 
 Dan Hendrycks, Thomas Dietterich. **Benchmarking Neural Network Robustness to Common Corruptions and Perturbations.** ICLR 2019.  
-[공식 논문 페이지](https://openreview.net/forum?id=HJz6tiCqYm) · [공개 원문](https://arxiv.org/abs/1903.12261) · [저자 공식 데이터·코드 저장소](https://github.com/hendrycks/robustness)
+[Official paper page](https://openreview.net/forum?id=HJz6tiCqYm) · [Released paper](https://arxiv.org/abs/1903.12261) · [Authors' official data and code repository](https://github.com/hendrycks/robustness)
 
 ### R13. DeiT
 
 Hugo Touvron, Matthieu Cord, Matthijs Douze, Francisco Massa, Alexandre Sablayrolles, Hervé Jégou. **Training data-efficient image transformers & distillation through attention.** ICML 2021, PMLR 139:10347–10357.  
-[공식 논문 페이지](https://proceedings.mlr.press/v139/touvron21a.html)
+[Official paper page](https://proceedings.mlr.press/v139/touvron21a.html)
 
-### R14. DeiT 공식 모델 정의
+### R14. Official DeiT Model Definition
 
-Facebook Research. **DeiT official implementation — models.py.** 비증류형 `deit_small_patch16_224`의 구성과 체크포인트 연결을 확인하는 자료입니다. 실행 시에는 변경 가능한 기본 브랜치가 아니라 구체적인 코드 버전을 고정합니다.  
-[공식 모델 정의](https://github.com/facebookresearch/deit/blob/main/models.py)
+Facebook Research. **DeiT official implementation — models.py.** This resource documents the configuration and checkpoint links for non-distilled `deit_small_patch16_224`. Runs pin a specific code version rather than the mutable default branch.  
+[Official model definition](https://github.com/facebookresearch/deit/blob/main/models.py)
 
 ### R15. Overthinking
 
 Yigitcan Kaya, Sanghyun Hong, Tudor Dumitras. **Shallow-Deep Networks: Understanding and Mitigating Network Overthinking.** ICML 2019, PMLR 97:3301–3310.  
-[공식 논문 페이지](https://proceedings.mlr.press/v97/kaya19a.html)
+[Official paper page](https://proceedings.mlr.press/v97/kaya19a.html)
 
 [R1]: https://proceedings.mlr.press/v97/kornblith19a.html
 [R2]: https://arxiv.org/abs/2108.08810
