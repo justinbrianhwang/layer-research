@@ -29,3 +29,6 @@ results/raw/
 .claude/
 .vscode/
 .idea/
+
+# private, never published
+private/
