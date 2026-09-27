@@ -17,7 +17,8 @@ echo "[vast] creating instance from offer $OFFER"
 CREATE=$("$VAST" create instance "$OFFER" --image "$IMAGE" --disk "$DISK" --ssh --direct --raw)
 echo "$CREATE"
 IID=$(echo "$CREATE" | python -c "import sys,json; print(json.load(sys.stdin)['new_contract'])")
-echo "{\"instance_id\": $IID, \"offer_id\": $OFFER, \"created\": \"$(date -u +%FT%TZ)\"}" > .vast_instance.json
+MACHINE=$("$VAST" show instance "$IID" --raw | python -c "import sys,json; print(json.load(sys.stdin).get('machine_id'))")
+echo "{\"instance_id\": $IID, \"offer_id\": $OFFER, \"machine_id\": $MACHINE, \"created\": \"$(date -u +%FT%TZ)\"}" > .vast_instance.json
 
 echo "[vast] waiting for instance $IID to be running..."
 for i in $(seq 1 60); do
@@ -25,7 +26,10 @@ for i in $(seq 1 60); do
   [ "$STATE" = "running" ] && break
   sleep 10
 done
-[ "$STATE" = "running" ] || { echo "instance not running after 10 min (state=$STATE)"; exit 1; }
+if [ "$STATE" != "running" ]; then
+  MID=$("$VAST" show instance "$IID" --raw | python -c "import sys,json; print(json.load(sys.stdin).get('machine_id'))")
+  echo "[vast] instance $IID not running after 10 min (state=$STATE, machine $MID); destroying"; "$VAST" destroy instance -y "$IID"; rm -f .vast_instance.json; echo "EXCLUDE_MACHINE=$MID"; exit 3
+fi
 SSH_URL=$("$VAST" ssh-url "$IID")
 echo "[vast] ssh: $SSH_URL"
 python - "$IID" "$SSH_URL" <<'EOF'
