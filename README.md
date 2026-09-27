@@ -30,9 +30,9 @@ test data is touched; a small learned adapter is then trained at that block with
 | T04 | `adapter_training` | done (9 tests; 63 total) | 2026-09-25 |
 | T05 | experiment scripts + CPU smoke run + GPU-readiness fixes | done (65 tests; real DeiT-S smoke chain verified on CPU) | 2026-09-25 |
 | E1 | Representation change vs. partial-patch recovery | done (val + test sweeps, 20 seeds, 12 conditions) | 2026-09-26 |
-| E2 | Budget dependence of site ranking | channel budget done; α ∈ {0.25, 0.5} and norm cap ρ = 0.5 sweeps running (10 mask seeds each) | 2026-09-27 |
+| E2 | Budget dependence of site ranking | channel budget done (test); α = 0.5 and norm cap ρ = 0.5 running as validation-split sweeps (10 seeds); α = 0.25 dropped (host failure, credit) | 2026-09-27 |
 | E3 | Generalization to unseen corruptions | done (contrast, JPEG held out) | 2026-09-26 |
-| E4 | Diagnostic patching vs. learned adapter | width 32 × 3 seeds done; widths 8 and 64 (1 seed) running | 2026-09-27 |
+| E4 | Diagnostic patching vs. learned adapter | done (width 32 × 3 seeds; widths 8 and 64 × 1 seed) | 2026-09-27 |
 | E5 | ResNet re-validation | code for ResNet-50 (16 residual-block sites) in progress (Codex T08) | 2026-09-27 |
 | E6 | Extended metrics (task sensitivity, PH distances) | code in progress (Codex T09); evaluated against the frozen E1 sweep | 2026-09-27 |
 
@@ -405,6 +405,39 @@ Seed variability is small (std ≤ 0.8 pp), so the pattern is stable:
 - Comparison with the diagnostic patching sweep follows once the test sweep finishes; on the
   validation split, diagnostic partial patching favours the *last* blocks (9 to 11), which is the
   opposite end of the network from the adapter optimum on observed corruptions.
+
+### Experiment D extension: adapter capacity budget (widths 8 / 32 / 64) (done, 2026-09-27)
+
+Same recipe as above (1 000 updates, batch 32, $\lambda_{\mathrm{clean}}=1$, observed corruptions only), one training
+seed for widths 8 and 64 (7 304 and 50 368 parameters), the 3-seed mean for width 32 (25 760 parameters).
+Test-split accuracy change in pp. Table: `results/tables/E4_adapter_test_by_site_widths.csv`.
+
+| site | observed w=8 | w=32 | w=64 | unseen w=8 | w=32 | w=64 | clean w=8 | w=32 | w=64 |
+|---|---|---|---|---|---|---|---|---|---|
+| 0 | +6.91 | +4.93 | +3.83 | -3.41 | -5.95 | -7.97 | -0.65 | -2.95 | -4.15 |
+| 1 | +7.76 | +6.10 | +4.71 | -1.38 | -6.72 | -10.44 | -0.80 | -3.33 | -6.45 |
+| 2 | +7.74 | +6.20 | +4.59 | -0.03 | -5.44 | -9.72 | -0.55 | -3.58 | -6.25 |
+| 3 | +7.17 | +5.18 | +3.32 | +1.05 | -4.19 | -9.57 | -0.90 | -3.57 | -6.00 |
+| 4 | +5.53 | +4.05 | +2.28 | +1.26 | -2.09 | -5.41 | -1.20 | -3.00 | -6.35 |
+| 5 | +4.10 | +2.38 | +0.97 | +0.76 | -1.58 | -4.15 | -1.20 | -3.18 | -5.75 |
+| 6 | +2.83 | +1.09 | -0.02 | +1.63 | -1.00 | -3.29 | -0.55 | -2.88 | -4.60 |
+| 7 | +2.08 | +0.89 | -0.81 | +1.13 | -0.94 | -2.88 | -0.65 | -3.00 | -5.70 |
+| 8 | +1.93 | +0.80 | -0.04 | +1.57 | -0.12 | -1.81 | -0.45 | -2.50 | -3.85 |
+| 9 | +1.07 | +0.40 | -0.51 | +1.17 | -0.14 | -1.37 | -0.60 | -1.67 | -2.45 |
+| 10 | +1.85 | +0.77 | +0.28 | +1.77 | +0.51 | -0.40 | +0.15 | -1.33 | -1.60 |
+| 11 | +0.88 | +0.22 | -0.28 | +0.02 | -0.83 | -1.87 | -0.75 | -1.73 | -2.75 |
+
+- **Smaller is better at every site.** Width 8 beats width 32, which beats width 64, on observed
+  corruptions, on unseen corruptions and on clean accuracy alike. Width 64 hurts unseen accuracy at
+  every site (down to −10 pp at block 1) and costs 4 to 6 pp of clean accuracy; width 8 is positive on
+  unseen corruptions from block 3 onwards and never costs more than 1.2 pp of clean accuracy.
+- **The capacity budget changes which sites are admissible.** With a 0.5 pp clean tolerance no width-32
+  or width-64 site is admissible; with width 8, blocks 2, 8 and 10 are (block 10 even *gains* 0.15 pp
+  clean accuracy) and the validation rule would pick block 10 (+1.9 pp observed, +1.8 pp unseen).
+  With a 1 pp tolerance width 8 admits blocks 0 to 3 and 6 to 11, and the rule picks block 1
+  (+7.8 pp observed, −1.4 pp unseen).
+- Training wall time is the same for all widths (≈ 6.5 min per site on an RTX 3090); the adapter's own
+  cost is negligible next to the frozen backbone, so "budget" here is capacity, not compute.
 
 ## Reproducibility
 
