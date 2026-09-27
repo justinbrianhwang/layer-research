@@ -13,5 +13,5 @@ $SSH 'set -e; cd /workspace 2>/dev/null || cd ~; \
   nvidia-smi --query-gpu=name,memory.total --format=csv,noheader; nproc; free -g | head -2; df -h . | tail -1'
 if [ -n "$DRIVER" ]; then
   # DRIVER may be a full command string, e.g. "CFG=configs/e2_alpha025.yaml bash scripts/gpu_run_E2.sh"
-  $SSH "cd /workspace/layer-research 2>/dev/null || cd ~/layer-research; mkdir -p results; nohup bash -c '$DRIVER' > results/gpu_run.log 2>&1 & echo launched pid \$!"
+  $SSH "cd /workspace/layer-research 2>/dev/null || cd ~/layer-research; mkdir -p results; setsid nohup bash -c '$DRIVER' > results/gpu_run.log 2>&1 < /dev/null & disown; sleep 5; if pgrep -f '^bash -c $DRIVER' >/dev/null; then echo launched; else echo LAUNCH-FAILED; tail -5 results/gpu_run.log; fi"
 fi
