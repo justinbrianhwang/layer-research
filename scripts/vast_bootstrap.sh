@@ -12,5 +12,6 @@ $SSH 'set -e; cd /workspace 2>/dev/null || cd ~; \
   python -c "import torch, timm; print(\"torch\", torch.__version__, \"cuda\", torch.cuda.is_available(), torch.cuda.get_device_name(0), \"timm\", timm.__version__)"; \
   nvidia-smi --query-gpu=name,memory.total --format=csv,noheader; nproc; free -g | head -2; df -h . | tail -1'
 if [ -n "$DRIVER" ]; then
-  $SSH "cd /workspace/layer-research 2>/dev/null || cd ~/layer-research; mkdir -p results; nohup bash $DRIVER > results/gpu_run.log 2>&1 & echo launched pid \$!"
+  # DRIVER may be a full command string, e.g. "CFG=configs/e2_alpha025.yaml bash scripts/gpu_run_E2.sh"
+  $SSH "cd /workspace/layer-research 2>/dev/null || cd ~/layer-research; mkdir -p results; nohup bash -c '$DRIVER' > results/gpu_run.log 2>&1 & echo launched pid \$!"
 fi
