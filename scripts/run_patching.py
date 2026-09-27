@@ -17,6 +17,8 @@ def main():
     p.add_argument("--layers", type=lambda s: [int(v) for v in s.split(",")])
     p.add_argument("--fractions", type=lambda s: [float(v) for v in s.split(",")])
     p.add_argument("--batch-size", type=int)
+    p.add_argument("--alphas", type=lambda s: [float(v) for v in s.split(",")], help="E2 only: restrict the alpha grid")
+    p.add_argument("--norm-cap", type=str, help="E2 only: 'none' for uncapped only, a float rho for capped only, or 'both'")
     run = Run(p.parse_args(), "run_patching")
     cfg, split = run.cfg["patching"], run.args.split
     if run.args.mask_seeds is not None:
@@ -56,9 +58,14 @@ def main():
                 seeds = cfg["mask_seeds"]
                 seeds = list(range(seeds)) if isinstance(seeds, int) else seeds
                 alphas = cfg["alphas"] if run.args.experiment == "E2" else [cfg["default_alpha"]]
+                if run.args.experiment == "E2" and run.args.alphas is not None:
+                    alphas = run.args.alphas
                 caps = [None]
                 if run.args.experiment == "E2" and cfg.get("norm_cap_rho") is not None:
                     caps.append(cfg["norm_cap_rho"])
+                if run.args.experiment == "E2" and run.args.norm_cap is not None:
+                    nc = run.args.norm_cap
+                    caps = [None] if nc == "none" else ([None, cfg["norm_cap_rho"]] if nc == "both" else [float(nc)])
                 frames = []
                 controls = [{"no_intervention": "none", "random_direction_same_norm": "random_direction"}.get(c, c) for c in cfg["controls"]]
                 for intervention in ["partial_channel"] + controls:
