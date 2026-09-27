@@ -14,14 +14,24 @@ def main():
     if not root.is_dir():
         root.parent.mkdir(parents=True, exist_ok=True)
         archive = root.parent / "imagenetv2-matched-frequency.tar.gz"
-        if not archive.exists():
-            url = "https://huggingface.co/datasets/vaishaal/ImageNetV2/resolve/main/imagenetv2-matched-frequency.tar.gz"
-            with urllib.request.urlopen(url) as source, archive.open("wb") as dest, tqdm(total=1264079360, unit="B", unit_scale=True) as bar:
-                while chunk := source.read(1024 * 1024):
-                    dest.write(chunk)
-                    bar.update(len(chunk))
-        if archive.stat().st_size != 1264079360:
-            raise ValueError("Archive size mismatch; remove incomplete archive before retrying")
+        url = "https://huggingface.co/datasets/vaishaal/ImageNetV2/resolve/main/imagenetv2-matched-frequency.tar.gz"
+        expected = 1264079360
+        for attempt in range(1, 6):  # resume-capable retries for flaky hosts
+            have = archive.stat().st_size if archive.exists() else 0
+            if have == expected:
+                break
+            if have > expected:
+                archive.unlink(); have = 0
+            request = urllib.request.Request(url, headers={"Range": f"bytes={have}-"} if have else {})
+            try:
+                with urllib.request.urlopen(request, timeout=60) as source, archive.open("ab" if have else "wb") as dest, tqdm(total=expected, initial=have, unit="B", unit_scale=True) as bar:
+                    while chunk := source.read(1024 * 1024):
+                        dest.write(chunk)
+                        bar.update(len(chunk))
+            except Exception as error:  # noqa: BLE001 - retry any transport failure
+                print(f"download attempt {attempt} failed: {error}", flush=True)
+        if archive.stat().st_size != expected:
+            raise ValueError("Archive size mismatch after retries; remove incomplete archive before retrying")
         with tarfile.open(archive, "r:*") as tf:
             tf.extractall(root.parent, filter="data")
     else:
