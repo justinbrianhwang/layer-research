@@ -30,11 +30,11 @@ test data is touched; a small learned adapter is then trained at that block with
 | T04 | `adapter_training` | done (9 tests; 63 total) | 2026-09-25 |
 | T05 | experiment scripts + CPU smoke run + GPU-readiness fixes | done (65 tests; real DeiT-S smoke chain verified on CPU) | 2026-09-25 |
 | E1 | Representation change vs. partial-patch recovery | done (val + test sweeps, 20 seeds, 12 conditions) | 2026-09-26 |
-| E2 | Budget dependence of site ranking | done for the channel budget q ∈ {0.01, 0.05, 0.10, 0.20} at α = 1 (α grid and norm cap not run) | 2026-09-26 |
+| E2 | Budget dependence of site ranking | channel budget done; α ∈ {0.25, 0.5} and norm cap ρ = 0.5 sweeps running (10 mask seeds each) | 2026-09-27 |
 | E3 | Generalization to unseen corruptions | done (contrast, JPEG held out) | 2026-09-26 |
-| E4 | Diagnostic patching vs. learned adapter | done (width 32 × 3 seeds; widths 8/64 not run) | 2026-09-26 |
-| E5 | ResNet re-validation | pending | |
-| E6 | Extended metrics (task sensitivity, kNN, TDA) | optional | |
+| E4 | Diagnostic patching vs. learned adapter | width 32 × 3 seeds done; widths 8 and 64 (1 seed) running | 2026-09-27 |
+| E5 | ResNet re-validation | code for ResNet-50 (16 residual-block sites) in progress (Codex T08) | 2026-09-27 |
+| E6 | Extended metrics (task sensitivity, PH distances) | code in progress (Codex T09); evaluated against the frozen E1 sweep | 2026-09-27 |
 
 Results are appended to the [Results](#results) section as they land.
 
