@@ -8,6 +8,9 @@ from _common import Run, parser, conditions, condition_dir, read_cache, table
 
 def main():
     run = Run(parser(__doc__).parse_args(), "compute_metrics", model=False)
+    blocks_attr = run.cfg["model"].get("blocks_attr", "blocks")
+    if blocks_attr == "resnet_stages" and run.cfg["representation"]["summary_modes"] != ["gap"]:
+        raise ValueError("ResNet metrics require gap summaries")
     base = condition_dir(run.paths, "score", "clean", 0)
     clean = read_cache(base / "summaries.pt", run)
     layers = run.cfg["representation"]["layers"]

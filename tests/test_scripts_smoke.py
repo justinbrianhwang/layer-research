@@ -47,7 +47,12 @@ def test_script_chain(tmp_path, monkeypatch):
 
     def invoke(name, *args):
         monkeypatch.setattr(sys, "argv", [name, "--config", str(path), "--device", "cpu", *args])
-        importlib.import_module(name).main()
+        module = importlib.import_module(name)
+        # Other integration fixtures may import scripts while _common.loader is
+        # patched. Bind this fixture's real loader rather than that stale alias.
+        if hasattr(module, "loader"):
+            monkeypatch.setattr(module, "loader", common.loader)
+        module.main()
 
     invoke("download_data")
     original = (tmp_path / "splits.json").read_bytes()
@@ -100,12 +105,41 @@ def test_script_chain(tmp_path, monkeypatch):
     assert len(pd.read_parquet(tmp_path / "results/tables/E1_effects.parquet")) == 12
     assert len(pd.read_parquet(tmp_path / "results/tables/E3_unseen.parquet")) == 10
     assert (tmp_path / "results/summary.md").exists()
+    # Extended selectors preserve frozen main-run tables and evaluation outputs.
+    main_selection = tmp_path / "results/tables/selections.parquet"
+    frozen_bytes = main_selection.read_bytes()
+    summary_bytes = (tmp_path / "results/summary.md").read_bytes()
+    invoke("compute_task_sensitivity", "--split", "score")
+    sensitivity = pd.read_parquet(tmp_path / "results/tables/task_sensitivity_score.parquet")
+    assert set(sensitivity.metric_name) == {"task_sens_dot", "task_sens_cos"}
+    assert sensitivity.label_access.eq("labels").all()
+    cost = json.loads((tmp_path / "results/manifests/compute_task_sensitivity_score/run_manifest.json").read_text())["metric_cost"]
+    assert cost["backward_count"] == 1
+    # CSV-only topology fixture exercises the documented optional table layout.
+    topology = sensitivity.copy()
+    topology["metric_name"] = ["ph_bottleneck_H0", "ph_bottleneck_H1"]
+    topology["label_access"] = "none"
+    topology["summary_mode"] = "cls"
+    topology.to_csv(tmp_path / "results/tables/topology_score.csv", index=False)
+    invoke("select_sites")
+    extended_path = tmp_path / "results/tables/selections_extended.parquet"
+    extended = pd.read_parquet(extended_path)
+    assert len(extended) == len(selections) + 4
+    pd.testing.assert_frame_equal(selections, extended[extended.selector.isin(selections.selector)].reset_index(drop=True))
+    assert main_selection.read_bytes() == frozen_bytes
+    invoke("evaluate", "--selections", str(extended_path), "--output-suffix", "_extended")
+    assert (tmp_path / "results/summary.md").read_bytes() == summary_bytes
+    assert (tmp_path / "results/summary_extended.md").exists()
+    assert len(pd.read_parquet(tmp_path / "results/tables/E3_observed_extended.parquet")) == len(extended)
+    assert (tmp_path / "results/tables/E1_selectors_extended.csv").exists()
+    invoke("select_sites", "--no-extra-metrics")
+    pd.testing.assert_frame_equal(selections, pd.read_parquet(main_selection))
     invoke("check_tokens_precision", "--limit", "2")
     assert pd.read_parquet(tmp_path / "results/tables/tokens_precision.parquet").max_abs_diff.max() < .01
     for split in ("val", "test"):
         invoke("run_patching", "--split", split, "--experiment", "E2")
         assert len(pd.read_parquet(tmp_path / f"results/raw/patching_{split}.parquet")) == 2 * 2 * (4 + 5)
-    invoke("select_sites")
+    invoke("select_sites", "--no-extra-metrics")
     invoke("evaluate")
     assert (tmp_path / "results/tables/E2_selectors.csv").exists()
     invoke("train_adapters", "--site", "0")

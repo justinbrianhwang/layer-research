@@ -1,4 +1,4 @@
-"""Single-site learned repair with frozen, eval-mode ViT backbones."""
+"""Single-site learned repair with frozen, eval-mode ViT and CNN backbones."""
 from dataclasses import asdict, dataclass, replace
 from contextlib import contextmanager
 from pathlib import Path
@@ -13,18 +13,21 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
-from .feature_extractor import BlockOutputRecorder, num_blocks
+from .feature_extractor import BlockOutputRecorder, num_blocks, resolve_blocks, shape_report
 from .evaluation import accuracy_gain_pp, clean_accuracy_change_pp
 
 
 class BottleneckAdapter(nn.Module):
     """Token-wise residual MLP; affine LN and both biases are learnable."""
-    def __init__(self, d: int, r: int, act="gelu"):
+    def __init__(self, d: int, r: int, act="gelu", layout="tokens"):
         super().__init__()
         if d <= 0 or r <= 0:
             raise ValueError("d and r must be positive")
         if act not in ("gelu", "relu"):
             raise ValueError("act must be gelu or relu")
+        if layout not in ("tokens", "channels_last_4d"):
+            raise ValueError("Unknown adapter layout")
+        self.layout = layout
         self.d, self.r = d, r
         self.norm = nn.LayerNorm(d)
         self.down = nn.Linear(d, r)
@@ -34,6 +37,9 @@ class BottleneckAdapter(nn.Module):
         nn.init.zeros_(self.up.bias)
 
     def forward(self, h):
+        if self.layout == "channels_last_4d":
+            z = h.permute(0, 2, 3, 1)
+            return h + self.up(self.act(self.down(self.norm(z)))).permute(0, 3, 1, 2)
         return h + self.up(self.act(self.down(self.norm(h))))
 
     def extra_params(self) -> int:
@@ -43,11 +49,11 @@ class BottleneckAdapter(nn.Module):
         return 4 * self.d * self.r + 5 * self.d
 
 
-def attach_adapter(model, layer: int, adapter):
+def attach_adapter(model, layer: int, adapter, blocks_attr="blocks"):
     """Attach at a block output, retaining autograd; caller removes the handle."""
-    if not 0 <= layer < num_blocks(model):
+    if not 0 <= layer < num_blocks(model, blocks_attr):
         raise ValueError("Layer index out of range")
-    return model.blocks[layer].register_forward_hook(lambda module, inputs, output: adapter(output))
+    return resolve_blocks(model, blocks_attr)[layer].register_forward_hook(lambda module, inputs, output: adapter(output))
 
 
 def count_trainable(model):
@@ -133,33 +139,57 @@ def _batch(batch, device):
 
 
 @torch.no_grad()
-def _flops(model, x, layer, adapter):
-    """Approximate standard timm ViT FLOPs per input (multiply-add = two)."""
-    with BlockOutputRecorder(model, range(num_blocks(model))) as rec:
-        model(x[:1])
-    blocks = []
-    for i, block in enumerate(model.blocks):
-        _, n, d = rec.outputs[i].shape
-        m = block.mlp.fc1.out_features
-        blocks.append(8*n*d*d + 4*n*n*d + 4*n*d*m + 10*n*d)
-    proj = model.patch_embed.proj
-    patches = rec.outputs[0].shape[1] - model.num_prefix_tokens
-    stem = 2 * patches * proj.out_channels * proj.in_channels * math.prod(proj.kernel_size)
-    n, d = rec.outputs[layer].shape[1:]
-    head = 2 * d * model.num_classes + 5*n*d
-    extra = n * adapter.extra_flops_per_token()
-    forward = stem + sum(blocks) + head + extra
-    backward = sum(blocks[layer+1:]) + head + 2*extra
-    return {"forward_flops_per_image": forward, "backward_flops_per_image": backward,
-            "adapter_forward_flops_per_image": extra, "block_forward_flops": blocks}
+def _flops(model, x, layer, adapter, blocks_attr="blocks"):
+    """Hook-count Linear/Conv2d MACs (2 FLOPs); add ViT attention matmuls.
+
+    Backward estimates twice downstream block + head + adapter forward FLOPs.
+    Normalization, activations, pooling and optimizer operations are omitted.
+    """
+    blocks = resolve_blocks(model, blocks_attr)
+    counts, handles, executed = {}, [], []
+    def count(module, inputs, output):
+        if isinstance(module, nn.Linear):
+            value = 2 * output.numel() * module.in_features
+        else:
+            value = 2 * output.numel() * (module.in_channels // module.groups) * math.prod(module.kernel_size)
+        counts[module] = counts.get(module, 0) + value
+        executed.append((module, value))
+    def attention(module, inputs, output):
+        # QK^T and attention-times-V are functional ops, invisible to Linear hooks.
+        _, n, d = inputs[0].shape
+        counts[module] = counts.get(module, 0) + 4*n*n*d
+    try:
+        for module in model.modules():
+            if isinstance(module, (nn.Linear, nn.Conv2d)):
+                handles.append(module.register_forward_hook(count))
+        for block in blocks:
+            attn = getattr(block, "attn", None)
+            if attn is not None and hasattr(attn, "qkv"):
+                handles.append(attn.register_forward_hook(attention))
+        with BlockOutputRecorder(model, range(len(blocks)), blocks_attr=blocks_attr) as rec:
+            model(x[:1])
+    finally:
+        for handle in handles:
+            handle.remove()
+    block_costs = [sum(counts.get(m, 0) for m in block.modules()) for block in blocks]
+    block_modules = {m for block in blocks for m in block.modules()}
+    # Head operations are counted after the last residual block in execution order.
+    last = max((i for i, (m, _) in enumerate(executed) if m in block_modules), default=-1)
+    head = sum(v for m, v in executed[last+1:])
+    shape = rec.outputs[layer].shape
+    positions = math.prod(shape[2:]) if len(shape) == 4 else shape[1]
+    extra = positions * adapter.extra_flops_per_token()
+    return {"forward_flops_per_image": sum(counts.values()) + extra,
+            "backward_flops_per_image": 2 * (sum(block_costs[layer+1:]) + head + extra),
+            "adapter_forward_flops_per_image": extra, "block_forward_flops": block_costs}
 
 
-def train_adapter(model, adapter, fit_loader, cfg, device):
+def train_adapter(model, adapter, fit_loader, cfg, device, blocks_attr="blocks"):
     """Train existing adapter weights; seed initialization before constructing it."""
     device = torch.device(device)
     if cfg.width != adapter.r:
         raise ValueError("Config width differs from adapter width")
-    if not 0 <= cfg.layer < num_blocks(model):
+    if not 0 <= cfg.layer < num_blocks(model, blocks_attr):
         raise ValueError("Layer index out of range")
     if getattr(fit_loader, "batch_size", cfg.batch_size) != cfg.batch_size:
         raise ValueError("Loader batch_size must match config")
@@ -194,8 +224,8 @@ def train_adapter(model, adapter, fit_loader, cfg, device):
                 if len(y) > cfg.batch_size:
                     raise ValueError("Batch exceeds config batch_size")
                 if estimate is None:
-                    estimate = _flops(model, corr, cfg.layer, adapter)
-                    handle = attach_adapter(model, cfg.layer, adapter)
+                    estimate = _flops(model, corr, cfg.layer, adapter, blocks_attr)
+                    handle = attach_adapter(model, cfg.layer, adapter, blocks_attr)
                 lr = cfg.lr * (0.5*(1+math.cos(math.pi*step/cfg.steps)) if cfg.lr_schedule == "cosine" else 1)
                 for group in optimizer.param_groups:
                     group["lr"] = lr
@@ -256,17 +286,17 @@ def _prediction(logits, y):
 
 
 @torch.no_grad()
-def evaluate_adapter(model, adapter, layer, loader, device):
+def evaluate_adapter(model, adapter, layer, loader, device, blocks_attr="blocks"):
     """Per-image corrupted and clean effects; removes only its own hook."""
     model.to(device).eval()
     adapter.to(device).eval()
-    if not 0 <= layer < num_blocks(model):
+    if not 0 <= layer < num_blocks(model, blocks_attr):
         raise ValueError("Layer index out of range")
     rows = []
     for batch in loader:
         clean, corr, y, ids = _batch(batch, device)
         before = [model(corr), model(clean)]
-        handle = attach_adapter(model, layer, adapter)
+        handle = attach_adapter(model, layer, adapter, blocks_attr)
         try:
             after = [model(corr), model(clean)]
         finally:
@@ -288,15 +318,21 @@ def evaluate_adapter(model, adapter, layer, loader, device):
 
 
 def train_selected_site(model, layer, width, seed, fit_loader, val_loader, cfg_base,
-                        device, out_dir, *, selection_cost=0):
+                        device, out_dir, *, selection_cost=0, blocks_attr="blocks"):
     """Train exactly one caller-selected site; selection uses no validation here."""
     cfg = replace(cfg_base, layer=layer, width=width, training_seed=seed)
-    if not 0 <= layer < num_blocks(model):
+    if not 0 <= layer < num_blocks(model, blocks_attr):
         raise ValueError("Layer index out of range")
     with _seeded(seed, fit_loader):
-        adapter = BottleneckAdapter(model.blocks[layer].norm1.normalized_shape[-1], width)
-    result = train_adapter(model, adapter, fit_loader, cfg, device)
-    rows = evaluate_adapter(model, adapter, layer, val_loader, device)
+        sample = next(iter(fit_loader))
+        inputs = sample["x_clean"] if isinstance(sample, dict) else sample[0]
+        shape = shape_report(model, tuple(inputs.shape[1:]), blocks_attr)[layer]
+    # Shape inference must not advance the seeded adapter initialization stream.
+    with _seeded(seed, fit_loader):
+        adapter = BottleneckAdapter(shape[1] if len(shape) == 4 else shape[-1], width,
+                                    layout="channels_last_4d" if len(shape) == 4 else "tokens")
+    result = train_adapter(model, adapter, fit_loader, cfg, device, blocks_attr)
+    rows = evaluate_adapter(model, adapter, layer, val_loader, device, blocks_attr)
     if rows.empty:
         raise ValueError("Validation loader must be nonempty")
     result.cost.update(selection_cost=selection_cost, reference_total_compute=None)
@@ -315,13 +351,13 @@ def train_selected_site(model, layer, width, seed, fit_loader, val_loader, cfg_b
 
 
 def train_all_sites(model, layers, widths, seeds, fit_loader, val_loader, cfg_base,
-                    device, out_dir, *, selection_cost=0):
+                    device, out_dir, *, selection_cost=0, blocks_attr="blocks"):
     """Exhaustive reference; each row's training_compute belongs to that site only."""
     layers, widths, seeds = list(layers), list(widths), list(seeds)
     if any(not values or len(set(values)) != len(values) for values in (layers, widths, seeds)):
         raise ValueError("Provide nonempty unique layers, widths and seeds")
     runs = [train_selected_site(model, l, w, s, fit_loader, val_loader, cfg_base, device,
-                               out_dir, selection_cost=selection_cost)
+                               out_dir, selection_cost=selection_cost, blocks_attr=blocks_attr)
             for l in layers for w in widths for s in seeds]
     table = pd.concat(runs, ignore_index=True)
     table["reference_total_compute"] = table.training_compute.sum()

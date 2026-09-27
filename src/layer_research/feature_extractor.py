@@ -1,11 +1,19 @@
-﻿"""Eval-mode extraction at full residual-block boundaries."""
+"""Eval-mode extraction at full residual-block boundaries."""
 from collections.abc import Sequence, Iterator
 from typing import Literal, Self
 import torch
 
 
+def resolve_blocks(model, blocks_attr="blocks") -> list:
+    """Resolve ordered residual blocks; ResNet outputs follow add + ReLU."""
+    if blocks_attr == "resnet_stages":
+        return [block for stage in ("layer1", "layer2", "layer3", "layer4")
+                for block in model.get_submodule(stage)]
+    return list(model.get_submodule(blocks_attr))
+
+
 def num_blocks(model, blocks_attr="blocks") -> int:
-    return len(model.get_submodule(blocks_attr))
+    return len(resolve_blocks(model, blocks_attr))
 
 
 class BlockOutputRecorder:
@@ -13,7 +21,7 @@ class BlockOutputRecorder:
     def __init__(self, model, layers: Sequence[int], to_cpu=True, dtype=None, blocks_attr="blocks"):
         self.model = model
         self.layers = tuple(layers)
-        self.blocks = model.get_submodule(blocks_attr)
+        self.blocks = resolve_blocks(model, blocks_attr)
         if len(set(self.layers)) != len(self.layers) or any(i < 0 or i >= len(self.blocks) for i in self.layers):
             raise ValueError("Layer indices must be unique and in range")
         self.to_cpu, self.dtype = to_cpu, dtype
@@ -45,8 +53,12 @@ class BlockOutputRecorder:
         self._handles.clear()
 
 
-def summarize(tokens: torch.Tensor, mode: Literal["cls", "patch_mean", "cls+patch_mean"]) -> torch.Tensor:
+def summarize(tokens: torch.Tensor, mode: Literal["cls", "patch_mean", "cls+patch_mean", "gap"]) -> torch.Tensor:
     """Summarize single-CLS ViT tokens, excluding the first token from patch means."""
+    if tokens.ndim == 4:
+        if mode != "gap":
+            raise ValueError("4-D CNN outputs require gap; CLS/patch summaries are ViT-only")
+        return tokens.mean(dim=(2, 3))
     if tokens.ndim != 3 or tokens.shape[1] < 1:
         raise ValueError("Expected [batch, tokens, channels]")
     if mode == "cls":
@@ -79,7 +91,7 @@ def iter_paired_block_outputs(model, loader, layers, device="cpu", blocks_attr="
 def extract_paired_features(model, loader, layers, summary_modes, device="cpu", blocks_attr="blocks") -> dict:
     """Return clean/corrupted[layer][summary_mode], logits, labels and aligned IDs."""
     layers, modes = tuple(layers), tuple(summary_modes)
-    if not modes or len(set(modes)) != len(modes) or any(m not in ("cls", "patch_mean", "cls+patch_mean") for m in modes):
+    if not modes or len(set(modes)) != len(modes) or any(m not in ("cls", "patch_mean", "cls+patch_mean", "gap") for m in modes):
         raise ValueError("Provide unique supported summary modes")
     result = {side: {l: {m: [] for m in modes} for l in layers} for side in ("clean", "corrupted")}
     for key in ("clean_logits", "corrupted_logits", "labels", "image_ids"):

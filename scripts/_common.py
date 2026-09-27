@@ -38,7 +38,7 @@ def model_fingerprint(model):
     h = hashlib.sha256(timm.__version__.encode())
     for name, value in model.state_dict().items():
         h.update(name.encode())
-        h.update(value.detach().cpu().contiguous().view(torch.uint8).numpy().tobytes())
+        h.update(value.detach().cpu().contiguous().reshape(-1).view(torch.uint8).numpy().tobytes())
     return h.hexdigest()
 
 
@@ -92,9 +92,12 @@ class Run:
 
     def finish(self):
         commit = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
-        data = dict(config=self.cfg, arguments=vars(self.args), git_commit=commit,
+        arguments = {k: str(v) if isinstance(v, Path) else v for k, v in vars(self.args).items()}
+        data = dict(config=self.cfg, arguments=arguments, git_commit=commit,
                     model_fingerprint=self.fingerprint, started_at=self.started,
                     finished_at=datetime.now(timezone.utc).isoformat(), elapsed_seconds=time.perf_counter()-self.start)
+        if hasattr(self, "metric_cost"):
+            data["metric_cost"] = self.metric_cost
         suffix = "_".join(str(getattr(self.args, key)) for key in ("experiment", "split") if hasattr(self.args, key))
         path = self.paths.results / "manifests" / (self.name + ("_" + suffix if suffix else ""))
         path.mkdir(parents=True, exist_ok=True)

@@ -66,3 +66,12 @@ __all__ += [
     "count_trainable", "check_only_adapter_trainable", "train_adapter", "evaluate_adapter",
     "train_selected_site", "train_all_sites",
 ]
+
+from .task_sensitivity import margin_gradient_scores
+from .topology import ph_diagrams, ph_distance, fit_clean_pca
+
+__all__ += ["margin_gradient_scores", "ph_diagrams", "ph_distance", "fit_clean_pca"]
+
+from .feature_extractor import resolve_blocks
+
+__all__ += ["resolve_blocks"]

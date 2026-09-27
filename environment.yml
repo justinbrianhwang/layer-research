@@ -24,4 +24,6 @@ dependencies:
       - wand
       - scikit-image
       - scikit-learn
+      - ripser
+      - persim
       - opencv-python-headless

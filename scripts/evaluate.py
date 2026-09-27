@@ -82,11 +82,18 @@ def gain(df):
 
 
 def main():
-    run = Run(parser(__doc__).parse_args(), "evaluate", model=False)
+    p = parser(__doc__)
+    p.add_argument("--selections")
+    p.add_argument("--output-suffix", default="")
+    args = p.parse_args()
+    suffix = args.output_suffix
+    if any(c not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for c in suffix):
+        p.error("--output-suffix may contain only letters, digits, underscores and hyphens")
+    run = Run(args, "evaluate" + suffix, model=False)
     path = run.paths.raw / "patching_test.parquet"
     raw = read_table_columns(path, run, GROUPS + ["image_id", "is_observed", "label",
                             "baseline_prediction", "clean_prediction", "post_intervention_prediction"])
-    selections = read_table_columns(run.paths.tables / "selections.parquet", run,
+    selections = read_table_columns(run.args.selections or run.paths.tables / "selections.parquet", run,
                                    BUDGET + ["selector", "candidate", "admissible"])
     for column in ("label", "baseline_prediction", "clean_prediction", "post_intervention_prediction"):
         if raw[column].isna().any():
@@ -96,8 +103,8 @@ def main():
     aggregates = image_aggregates(raw)
     del raw
     for exp, frame in effects.groupby("experiment"):
-        table(frame, run.paths.tables / f"{exp}_effects", run)
-        table(aggregate_over_seeds(frame), run.paths.tables / f"{exp}_seed_variability", run)
+        table(frame, run.paths.tables / f"{exp}_effects{suffix}", run)
+        table(aggregate_over_seeds(frame), run.paths.tables / f"{exp}_seed_variability{suffix}", run)
     rows = []
     n_boot = run.cfg["evaluation"]["bootstrap_resamples"]
     for observed, subset in aggregates.groupby("is_observed", observed=True):
@@ -131,14 +138,14 @@ def main():
                       f"{selection.selector} -> {chosen} ({len(image_ids)} images)", flush=True)
     selected = pd.DataFrame(rows)
     for domain, frame in selected.groupby("domain"):
-        table(frame, run.paths.tables / f"E3_{domain}", run)
+        table(frame, run.paths.tables / f"E3_{domain}{suffix}", run)
     for exp, frame in selected.groupby("experiment"):
-        table(frame, run.paths.tables / f"{exp}_selectors", run)
+        table(frame, run.paths.tables / f"{exp}_selectors{suffix}", run)
     text = "# Generated-corruption evaluation on ImageNetV2\n\nModel fingerprint: " + run.fingerprint
     text += "\n\nImage bootstrap uncertainty is separate from mask-seed variability.\n\n"
     text += "| " + " | ".join(selected.columns) + " |\n| " + " | ".join(["---"] * len(selected.columns)) + " |\n"
     text += "\n".join("| " + " | ".join(map(str, row)) + " |" for row in selected.itertuples(index=False, name=None))
-    (run.paths.results / "summary.md").write_text(text, encoding="utf-8")
+    (run.paths.results / f"summary{suffix}.md").write_text(text, encoding="utf-8")
     run.finish()
 
 

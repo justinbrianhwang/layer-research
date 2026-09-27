@@ -6,6 +6,7 @@ import pandas as pd
 import torch
 from torch.utils.data import ConcatDataset, DataLoader
 from tqdm import tqdm
+from layer_research.feature_extractor import shape_report
 from layer_research.adapter_training import BottleneckAdapter, AdaptTrainConfig, train_adapter, evaluate_adapter
 from _common import Run, parser, loader, conditions, set_all_seeds, table
 
@@ -18,6 +19,8 @@ def main():
                    help="count (0..N-1) or an explicit comma-separated list")
     run = Run(p.parse_args(), "train_adapters")
     cfg = run.cfg["adapter"]
+    blocks_attr = run.cfg["model"].get("blocks_attr", "blocks")
+    shapes = shape_report(run.model, tuple(run.cfg["model"]["input_size"]), blocks_attr)
     layers = [run.args.site] if run.args.site is not None else run.cfg["representation"]["layers"]
     widths = [cfg["default_width"]] if run.args.site is not None else cfg["widths"]
     if run.args.widths is not None:
@@ -34,9 +37,11 @@ def main():
     grid = list(product(layers, widths, seeds))
     for layer, width, seed in tqdm(grid, desc="adapters"):
         set_all_seeds(seed)
-        adapter = BottleneckAdapter(run.cfg["model"]["embed_dim"], width).to(run.device)
+        shape = shapes[layer]
+        adapter = BottleneckAdapter(shape[1] if len(shape) == 4 else shape[-1], width,
+                                    layout="channels_last_4d" if len(shape) == 4 else "tokens").to(run.device)
         train_cfg = AdaptTrainConfig(layer, width, cfg.get("lr", .001), cfg.get("weight_decay", .01), cfg.get("steps", 1000), batch_size, cfg["lambda_clean"], seed, amp=cfg.get("amp", False), lr_schedule=cfg.get("lr_schedule", "constant"))
-        result = train_adapter(run.model, adapter, fit, train_cfg, run.device)
+        result = train_adapter(run.model, adapter, fit, train_cfg, run.device, blocks_attr)
         path = run.paths.raw / "adapters" / f"layer_{layer}_width_{width}_seed_{seed}"
         path.mkdir(parents=True, exist_ok=True)
         torch.save(dict(state_dict={k: v.cpu() for k, v in adapter.state_dict().items()}, model_fingerprint=run.fingerprint), path / "adapter.pt")
@@ -44,7 +49,7 @@ def main():
         costs.append(dict(result.cost, layer_id=layer, width=width, training_seed=seed, selection_cost=cfg.get("selection_cost", 0)))
         for split in frames:
             for i, (name, severity) in enumerate(conditions(run.cfg)):
-                df = evaluate_adapter(run.model, adapter, layer, loader(run, split, name, severity), run.device)
+                df = evaluate_adapter(run.model, adapter, layer, loader(run, split, name, severity), run.device, blocks_attr)
                 if i:
                     df = df[df.input_type.ne("clean")]
                 frames[split].append(df.assign(width=width, training_seed=seed, split=split, is_observed=df.corruption.isin(run.cfg["corruptions"]["observed"])))

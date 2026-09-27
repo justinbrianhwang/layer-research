@@ -1,5 +1,6 @@
 """Freeze selectors and metric directions using observed score/validation only."""
 import json
+import argparse
 import pandas as pd
 from layer_research import site_selection as ss
 from layer_research.evaluation import accuracy_gain_pp
@@ -7,10 +8,30 @@ from _common import Run, parser, read_table_columns, table
 
 
 def main():
-    run = Run(parser(__doc__).parse_args(), "select_sites", model=False)
+    p = parser(__doc__)
+    p.add_argument("--extra-metrics", action=argparse.BooleanOptionalAction, default=True)
+    run = Run(p.parse_args(), "select_sites", model=False)
     metrics = read_table_columns(run.paths.tables / "metrics_score.parquet", run,
                                  ["is_observed", "metric_name", "summary_mode", "layer", "score",
                                   "corruption", "split", "label_access"])
+    extended = False
+    if run.args.extra_metrics:
+        for name in ("task_sensitivity_score", "topology_score"):
+            path = run.paths.tables / f"{name}.parquet"
+            csv = path.with_suffix(".csv")
+            if path.exists():
+                extra = read_table_columns(path, run, metrics.columns)
+            elif csv.exists():
+                extra = pd.read_csv(csv)
+                if not extra.model_fingerprint.eq(run.fingerprint).all():
+                    raise ValueError("Incompatible table fingerprints")
+                extra = extra[list(metrics.columns)]
+            else:
+                continue
+            if not extra.split.eq("score").all():
+                raise ValueError("Extra metrics must use the score split")
+            metrics = pd.concat([metrics, extra], ignore_index=True)
+            extended = True
     val = read_table_columns(run.paths.raw / "patching_val.parquet", run,
                             ["label", "layer_id", "intervention_type", "fraction", "alpha", "norm_cap",
                              "experiment", "is_observed", "baseline_prediction", "clean_prediction",
@@ -52,7 +73,7 @@ def main():
                 selection_cost=json.dumps(cost), direction=direction, val_spearman=correlation,
                 admissible=json.dumps(admissible), experiment=experiment, fraction=fraction, alpha=alpha, norm_cap=cap))
             print(f"  {name}: {selection.candidate}", flush=True)
-    table(pd.DataFrame(rows), run.paths.tables / "selections", run)
+    table(pd.DataFrame(rows), run.paths.tables / ("selections_extended" if extended else "selections"), run)
     run.finish()
 
 

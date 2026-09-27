@@ -10,7 +10,7 @@ import torch
 from torch import Tensor
 from torch.nn import functional as F
 
-from .feature_extractor import BlockOutputRecorder
+from .feature_extractor import BlockOutputRecorder, resolve_blocks
 
 
 @dataclass(frozen=True)
@@ -64,14 +64,16 @@ class Patcher:
     Supply either a MaskSpec (resolved at the block) or a bool channel mask.
     Stochastic controls require an explicitly seeded generator. Shuffling also
     requires batch labels so every donor pair has a recorded same_class flag.
+    Eval mode freezes BatchNorm running statistics for CNN backbones.
     """
 
     def __init__(self, model, layer, spec=None, alpha=1.0, mask=None,
                  norm_cap=None, r_l=None,
                  intervention=InterventionType.PARTIAL_CHANNEL, generator=None,
-                 *, exclude_cls=False, channel_scores=None, labels=None):
-        if not isinstance(layer, int) or not 0 <= layer < len(model.blocks):
-            raise ValueError("layer must index model.blocks")
+                 *, exclude_cls=False, channel_scores=None, labels=None, blocks_attr="blocks"):
+        self.blocks = resolve_blocks(model, blocks_attr)
+        if not isinstance(layer, int) or not 0 <= layer < len(self.blocks):
+            raise ValueError("layer must index the resolved residual blocks")
         if (spec is None) == (mask is None):
             raise ValueError("Provide exactly one of spec or mask")
         if not math.isfinite(alpha) or alpha < 0:
@@ -96,8 +98,8 @@ class Patcher:
         self._handle = None
 
     def set_donor(self, h_clean):
-        if not isinstance(h_clean, Tensor) or h_clean.ndim != 3:
-            raise ValueError("Donor must be a [B, N, d] tensor")
+        if not isinstance(h_clean, Tensor) or h_clean.ndim not in (3, 4):
+            raise ValueError("Donor must be [B, N, d] or [B, C, H, W]")
         self._donor = h_clean.detach().clone()
         self.last_stats = {}
 
@@ -105,7 +107,7 @@ class Patcher:
         if self._handle is not None:
             raise RuntimeError("Patcher context is already active")
         self.model.eval()
-        self._handle = self.model.blocks[self.layer].register_forward_hook(self._hook)
+        self._handle = self.blocks[self.layer].register_forward_hook(self._hook)
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -114,13 +116,17 @@ class Patcher:
             self._handle = None
 
     def _hook(self, module, inputs, output):
+        assert not self.model.training, "Patching requires eval mode (frozen BatchNorm statistics)"
         self.last_stats = {}
-        if not isinstance(output, Tensor) or output.ndim != 3:
-            raise ValueError("Block output must have shape [B, N, d]")
+        if not isinstance(output, Tensor) or output.ndim not in (3, 4):
+            raise ValueError("Block output must be [B, N, d] or [B, C, H, W]")
         if self._donor is None or self._donor.shape != output.shape:
-            raise ValueError("Set an aligned donor with the same [B, N, d] shape")
+            raise ValueError("Set an aligned donor with the same block-output shape")
         donor = self._donor.to(device=output.device, dtype=output.dtype)
-        b, n, d = output.shape
+        b = output.shape[0]
+        d = output.shape[1] if output.ndim == 4 else output.shape[-1]
+        n = output[0].numel() // d
+        scale_shape = (b,) + (1,) * (output.ndim - 1)
         mask = (make_channel_mask(d, self.spec, self.channel_scores)[0]
                 if self.spec is not None else self.mask)
         if not isinstance(mask, Tensor) or mask.dtype != torch.bool or mask.shape != (d,):
@@ -130,8 +136,8 @@ class Patcher:
         full = kind == InterventionType.FULL_STATE
         if full:
             mask = torch.ones_like(mask)
-        support = mask[None, None, :].expand(b, n, d).clone()
-        if self.exclude_cls and not full:
+        support = (mask[None, :, None, None] if output.ndim == 4 else mask[None, None, :]).expand_as(output).clone()
+        if self.exclude_cls and not full and output.ndim == 3:
             support[:, 0] = False
         extra = {}
         if kind == InterventionType.SHUFFLED_DONOR:
@@ -158,12 +164,12 @@ class Patcher:
             noise = torch.where(support, noise, 0)
             target = torch.linalg.vector_norm(delta.flatten(1), dim=1)
             length = torch.linalg.vector_norm(noise.flatten(1), dim=1)
-            delta = noise * (target / length.clamp_min(torch.finfo(output.dtype).tiny))[:, None, None]
+            delta = noise * (target / length.clamp_min(torch.finfo(output.dtype).tiny)).reshape(scale_shape)
         if rho is not None:
             length = torch.linalg.vector_norm(delta.flatten(1), dim=1)
             cap = rho * math.sqrt(n * d) * self.r_l
             scale = (cap / (length + 1e-12)).clamp(max=1)
-            delta = delta * scale[:, None, None]
+            delta = delta * scale.reshape(scale_shape)
         # Direct replacement avoids cancellation in the full-state positive control.
         patched = donor.clone() if full else output + delta
         actual = patched - output
@@ -174,7 +180,7 @@ class Patcher:
             "alpha": alpha, "norm_cap": rho,
             "actual_delta_norm": length.detach().cpu(),
             "n_elements_modified": torch.count_nonzero(actual.flatten(1), dim=1).detach().cpu(),
-            "token_count": n, "exclude_cls": self.exclude_cls and not full,
+            "token_count": n, "exclude_cls": self.exclude_cls and not full and output.ndim == 3,
             **extra,
         }
         if self.r_l is not None:
@@ -187,10 +193,10 @@ class Patcher:
 def run_patched_forward(model, layer, x_corr, h_clean, alpha, mask,
                         norm_cap=None, r_l=None,
                         intervention=InterventionType.PARTIAL_CHANNEL, generator=None,
-                        *, exclude_cls=False, labels=None):
+                        *, exclude_cls=False, labels=None, blocks_attr="blocks"):
     with Patcher(model, layer, alpha=alpha, mask=mask, norm_cap=norm_cap,
                  r_l=r_l, intervention=intervention, generator=generator,
-                 exclude_cls=exclude_cls, labels=labels) as patcher:
+                 exclude_cls=exclude_cls, labels=labels, blocks_attr=blocks_attr) as patcher:
         patcher.set_donor(h_clean)
         logits = model(x_corr)
         return logits, patcher.last_stats
@@ -207,7 +213,7 @@ def _metrics(logits, labels):
 def sweep_layers_budgets(model, batches, layers, fractions, alphas, mask_seeds,
                          device="cpu", *, mask_policy="random_fixed", channel_scores=None,
                          exclude_cls=False, norm_cap=None, r_l=None,
-                         intervention=InterventionType.PARTIAL_CHANNEL):
+                         intervention=InterventionType.PARTIAL_CHANNEL, blocks_attr="blocks"):
     """Return per-image rows. Optional caches: clean_outputs[layer], clean_logits.
 
     channel_scores and r_l are layer-keyed D_score estimates. Batch data follows
@@ -215,7 +221,7 @@ def sweep_layers_budgets(model, batches, layers, fractions, alphas, mask_seeds,
     """
     layers, fractions, alphas, mask_seeds = map(tuple, (layers, fractions, alphas, mask_seeds))
     if not layers or len(set(layers)) != len(layers) or any(
-            not isinstance(l, int) or l < 0 or l >= len(model.blocks) for l in layers):
+            not isinstance(l, int) or l < 0 or l >= len(resolve_blocks(model, blocks_attr)) for l in layers):
         raise ValueError("Provide unique valid layers")
     model.to(device).eval()
     intervention = InterventionType(intervention)
@@ -229,7 +235,7 @@ def sweep_layers_budgets(model, batches, layers, fractions, alphas, mask_seeds,
         outputs = batch.get("clean_outputs")
         clean_logits = batch.get("clean_logits")
         if outputs is None:
-            with BlockOutputRecorder(model, layers, to_cpu=False) as recorder:
+            with BlockOutputRecorder(model, layers, to_cpu=False, blocks_attr=blocks_attr) as recorder:
                 clean_logits = model(clean)
             outputs = recorder.outputs
         elif clean_logits is None:
@@ -241,12 +247,12 @@ def sweep_layers_budgets(model, batches, layers, fractions, alphas, mask_seeds,
         for layer, q, alpha, seed in product(layers, fractions, alphas, mask_seeds):
             spec = MaskSpec(mask_policy, q, seed, exclude_cls)
             scores = None if channel_scores is None else channel_scores[layer]
-            mask, _ = make_channel_mask(outputs[layer].shape[-1], spec, scores)
+            mask, _ = make_channel_mask(outputs[layer].shape[1] if outputs[layer].ndim == 4 else outputs[layer].shape[-1], spec, scores)
             logits, stats = run_patched_forward(
                 model, layer, clean if intervention == InterventionType.CLEAN_TO_CLEAN else corr,
                 outputs[layer], alpha, mask, norm_cap,
                 None if r_l is None else r_l[layer], intervention,
-                torch.Generator().manual_seed(seed), exclude_cls=exclude_cls, labels=labels)
+                torch.Generator().manual_seed(seed), exclude_cls=exclude_cls, labels=labels, blocks_attr=blocks_attr)
             pred, margin, loss = _metrics(logits, labels)
             for i, image_id in enumerate(ids):
                 if isinstance(image_id, Tensor):

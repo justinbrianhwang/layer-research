@@ -5,6 +5,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 from tqdm import tqdm
+from layer_research.feature_extractor import num_blocks
 from layer_research.patching_engine import sweep_layers_budgets
 from _common import Run, parser, loader, conditions, condition_dir, read_cache
 
@@ -20,13 +21,14 @@ def main():
     p.add_argument("--alphas", type=lambda s: [float(v) for v in s.split(",")], help="E2 only: restrict the alpha grid")
     p.add_argument("--norm-cap", type=str, help="E2 only: 'none' for uncapped only, a float rho for capped only, or 'both'")
     run = Run(p.parse_args(), "run_patching")
+    blocks_attr = run.cfg["model"].get("blocks_attr", "blocks")
     cfg, split = run.cfg["patching"], run.args.split
     if run.args.mask_seeds is not None:
         if run.args.mask_seeds <= 0:
             raise ValueError("mask seeds must be positive")
         cfg["mask_seeds"] = run.args.mask_seeds
     if run.args.layers is not None:
-        if any(l < 0 or l >= len(run.model.blocks) for l in run.args.layers):
+        if any(l < 0 or l >= num_blocks(run.model, blocks_attr) for l in run.args.layers):
             raise ValueError("layers must be valid block indices")
         run.cfg["representation"]["layers"] = run.args.layers
     if run.args.fractions is not None:
@@ -77,7 +79,7 @@ def main():
                             [cfg["channel_fractions"][0]] if control else cfg["channel_fractions"],
                             [cfg["default_alpha"]] if control else alphas, seeds[:1] if control else seeds,
                             run.device, mask_policy=cfg["mask_policy"].replace("random_fixed_nested", "random_fixed"),
-                            channel_scores=stats["channel_scores"], r_l=stats["r_l"], norm_cap=cap, intervention=intervention)
+                            channel_scores=stats["channel_scores"], r_l=stats["r_l"], norm_cap=cap, intervention=intervention, blocks_attr=blocks_attr)
                         frames.append(df)
                 df = pd.concat(frames, ignore_index=True).assign(corruption=name, severity=severity, split=split,
                     experiment=run.args.experiment, is_observed=name in run.cfg["corruptions"]["observed"], model_fingerprint=run.fingerprint)

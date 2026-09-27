@@ -12,13 +12,14 @@ def main():
     p.set_defaults(limit=64)
     p.add_argument("--split", default="val", choices=["score", "val", "test"])
     run = Run(p.parse_args(), "check_tokens_precision")
+    blocks_attr = run.cfg["model"].get("blocks_attr", "blocks")
     layers = run.cfg["representation"]["layers"]
     base = condition_dir(run.paths, run.args.split, "clean", 0)
     caches = {l: read_cache(base / f"tokens_layer{l}.pt", run) for l in layers}
     name, severity = conditions(run.cfg)[0]
     rows, offset = [], 0
     for clean, corr, y, ids in tqdm(loader(run, run.args.split, name, severity)):
-        with torch.no_grad(), BlockOutputRecorder(run.model, layers) as recorder:
+        with torch.no_grad(), BlockOutputRecorder(run.model, layers, blocks_attr=blocks_attr) as recorder:
             run.model(clean.to(run.device))
         for l in layers:
             cached = caches[l]
@@ -26,10 +27,10 @@ def main():
                 raise ValueError("Cache must contain at least the requested aligned images")
             # Any cached dtype is compared against the fp32 recomputation; fp32 caches should give ~0.
             for q in run.cfg["patching"]["channel_fractions"]:
-                mask, _ = make_channel_mask(cached["tokens"].shape[-1], MaskSpec("random_fixed", q, 0))
+                mask, _ = make_channel_mask(cached["tokens"].shape[1] if cached["tokens"].ndim == 4 else cached["tokens"].shape[-1], MaskSpec("random_fixed", q, 0))
                 args = (run.model, l, corr.to(run.device))
-                a, _ = run_patched_forward(*args, cached["tokens"][offset:offset+len(ids)].float(), 1., mask)
-                b, _ = run_patched_forward(*args, recorder.outputs[l], 1., mask)
+                a, _ = run_patched_forward(*args, cached["tokens"][offset:offset+len(ids)].float(), 1., mask, blocks_attr=blocks_attr)
+                b, _ = run_patched_forward(*args, recorder.outputs[l], 1., mask, blocks_attr=blocks_attr)
                 rows.append(dict(layer_id=l, fraction=q, n_images=len(ids), max_abs_diff=(a-b).abs().max().item()))
         offset += len(ids)
     df = pd.DataFrame(rows).groupby(["layer_id", "fraction"], as_index=False).agg(n_images=("n_images", "sum"), max_abs_diff=("max_abs_diff", "max"))
