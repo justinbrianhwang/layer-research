@@ -11,6 +11,7 @@ def main():
     p.add_argument("--batch-size", type=int)
     p.add_argument("--layers", type=lambda s: [int(v) for v in s.split(",")])
     p.add_argument("--tokens-dtype", choices=["float16", "float32"], default="float16")
+    p.add_argument("--splits", type=lambda s: s.split(","), help="subset of fit,score,val,test (default score,val,test)")
     run = Run(p.parse_args(), "cache_features")
     blocks_attr = run.cfg["model"].get("blocks_attr", "blocks")
     layers = run.args.layers if run.args.layers is not None else run.cfg["representation"]["layers"]
@@ -19,7 +20,8 @@ def main():
     if blocks_attr == "resnet_stages":
         run.args.tokens_dtype = "float32"
     modes = run.cfg["representation"]["summary_modes"]
-    for split in (["fit"] if run.args.include_fit else []) + ["score", "val", "test"]:
+    splits = run.args.splits if run.args.splits else (["fit"] if run.args.include_fit else []) + ["score", "val", "test"]
+    for split in splits:
         for name, severity in [("clean", 0)] + conditions(run.cfg):
             summaries = {l: {m: [] for m in modes} for l in (layers if blocks_attr == "resnet_stages" or run.args.layers is not None else range(num_blocks(run.model, blocks_attr)))}
             tokens = {l: [] for l in layers} if name == "clean" else {}
