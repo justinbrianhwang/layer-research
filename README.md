@@ -33,7 +33,7 @@ test data is touched; a small learned adapter is then trained at that block with
 | E2 | Budget dependence of site ranking | channel budget done (test); α = 0.5 and norm cap ρ = 0.5 done as validation-split sweeps (10 seeds); α = 0.25 dropped (host failure, credit) | 2026-09-28 |
 | E3 | Generalization to unseen corruptions | done (contrast, JPEG held out) | 2026-09-26 |
 | E4 | Diagnostic patching vs. learned adapter | done (width 32 × 3 seeds; widths 8 and 64 × 1 seed) | 2026-09-27 |
-| E5 | ResNet re-validation | code for ResNet-50 (16 residual-block sites) in progress (Codex T08) | 2026-09-27 |
+| E5 | ResNet re-validation | diagnostic patching done on ResNet-50 (16 sites, val 10 / test 5 seeds); adapter reference training | 2026-09-28 |
 | E6 | Extended metrics (task sensitivity, PH distances) | code in progress (Codex T09); evaluated against the frozen E1 sweep | 2026-09-27 |
 
 Results are appended to the [Results](#results) section as they land.
@@ -392,6 +392,76 @@ diagnostic of budget dependence**, not a held-out result. Tables: `results/e2_al
   therefore confirmed, but the cap is not a binding constraint at q ≤ 0.20.
 - At q = 0.01 every site is within 0.1 pp of every other under all three budgets; the argmax there is
   noise, as the 0.5 pp equivalence sets in the main E1/E3 tables already showed.
+
+### Experiment E5: cross-architecture re-validation on ResNet-50 (diagnostic patching, 2026-09-28)
+
+`timm` `resnet50.a1_in1k`, 16 candidate sites = the 16 bottleneck residual blocks (output after the residual
+add + ReLU; stages of 3/4/6/3 blocks), channel masks over the block's channel dimension broadcast over
+space, GAP (global-average-pool) summaries for the metrics, α = 1, 10 mask seeds on the validation split
+and 5 on the test split, same corruption protocol, same splits. Tokens were cached in fp16 for disk
+reasons (max patched-logit deviation vs. fp32 recomputation 0.006). Controls behave as for the ViT:
+full-state and clean-to-clean replacement restore the full clean–corrupted gap (+22.7 pp), random
+direction −0.04 pp, shuffled donor −0.27 pp. Tables: `results/resnet50/tables/`.
+
+**Per-site recovery on the test split** (mean over seeds and conditions, pp):
+
+| domain | q | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| observed | 0.05 | +1.10 | +0.84 | +1.12 | +1.64 | +1.76 | +1.72 | +1.91 | +2.44 | +2.56 | +2.44 | +2.39 | +2.20 | +1.98 | +2.44 | +2.38 | +2.49 |
+| observed | 0.1 | +1.88 | +1.45 | +1.87 | +3.64 | +3.98 | +3.92 | +4.33 | +5.07 | +5.45 | +5.11 | +4.96 | +4.72 | +4.31 | +4.96 | +4.92 | +5.42 |
+| observed | 0.2 | +2.63 | +2.74 | +3.69 | +7.62 | +8.14 | +7.98 | +8.66 | +10.82 | +11.32 | +11.19 | +10.54 | +10.23 | +9.55 | +10.04 | +10.02 | +11.51 |
+| unseen | 0.05 | -1.55 | +0.23 | +0.45 | +0.55 | +1.01 | +1.01 | +1.04 | +1.22 | +1.17 | +1.18 | +1.15 | +1.20 | +1.09 | +1.02 | +0.99 | +1.13 |
+| unseen | 0.1 | -1.45 | +0.81 | +0.99 | +1.35 | +2.10 | +2.07 | +2.11 | +2.76 | +2.81 | +2.68 | +2.85 | +2.71 | +2.53 | +2.17 | +2.06 | +2.57 |
+| unseen | 0.2 | -1.64 | +1.67 | +2.05 | +2.50 | +3.65 | +3.67 | +3.89 | +4.83 | +5.08 | +5.26 | +5.11 | +5.14 | +4.99 | +3.96 | +4.20 | +5.06 |
+
+**Selector regret on the test split** (frozen on observed corruptions, score/val splits only):
+
+*q = 0.20:*
+
+| selector | site | observed U (95% CI) | observed regret | unseen U (95% CI) | unseen regret |
+|---|---|---|---|---|---|
+| fixed_front | 0 | +2.63 (+2.11, +3.14) | 8.88 | -1.64 (-2.12, -1.14) | 6.90 |
+| fixed_middle | 8 | +11.32 (+10.72, +11.87) | 0.18 | +5.08 (+4.58, +5.57) | 0.18 |
+| fixed_back | 15 | +11.51 (+10.87, +12.11) | 0.00 | +5.06 (+4.62, +5.52) | 0.20 |
+| random | 13 | +10.03 (+9.49, +10.54) | 1.47 | +3.96 (+3.54, +4.40) | 1.30 |
+| small_search | 8 | +11.32 (+10.72, +11.87) | 0.18 | +5.08 (+4.58, +5.57) | 0.18 |
+| val_sweep | 8 | +11.32 (+10.72, +11.87) | 0.18 | +5.08 (+4.58, +5.57) | 0.18 |
+| relative_distance/gap | 15 | +11.51 (+10.87, +12.11) | 0.00 | +5.06 (+4.62, +5.52) | 0.20 |
+| cosine_distance/gap | 15 | +11.51 (+10.87, +12.11) | 0.00 | +5.06 (+4.62, +5.52) | 0.20 |
+| one_minus_cka/gap | 15 | +11.51 (+10.87, +12.11) | 0.00 | +5.06 (+4.62, +5.52) | 0.20 |
+| knn_preservation/gap | 15 | +11.51 (+10.87, +12.11) | 0.00 | +5.06 (+4.62, +5.52) | 0.20 |
+| amplification_ratio/gap | 8 | +11.32 (+10.72, +11.87) | 0.18 | +5.08 (+4.58, +5.57) | 0.18 |
+
+*q = 0.05:*
+
+| selector | site | observed U (95% CI) | observed regret | unseen U (95% CI) | unseen regret |
+|---|---|---|---|---|---|
+| fixed_front | 0 | +1.10 (+0.80, +1.37) | 1.46 | -1.55 (-1.92, -1.19) | 2.77 |
+| fixed_middle | 8 | +2.56 (+2.25, +2.83) | 0.00 | +1.16 (+0.92, +1.42) | 0.06 |
+| fixed_back | 15 | +2.49 (+2.21, +2.75) | 0.07 | +1.13 (+0.95, +1.32) | 0.09 |
+| random | 13 | +2.44 (+2.16, +2.72) | 0.13 | +1.02 (+0.80, +1.23) | 0.20 |
+| small_search | 15 | +2.49 (+2.21, +2.75) | 0.07 | +1.13 (+0.95, +1.32) | 0.09 |
+| val_sweep | 15 | +2.49 (+2.21, +2.75) | 0.07 | +1.13 (+0.95, +1.32) | 0.09 |
+| relative_distance/gap | 15 | +2.49 (+2.21, +2.75) | 0.07 | +1.13 (+0.95, +1.32) | 0.09 |
+| cosine_distance/gap | 15 | +2.49 (+2.21, +2.75) | 0.07 | +1.13 (+0.95, +1.32) | 0.09 |
+| one_minus_cka/gap | 15 | +2.49 (+2.21, +2.75) | 0.07 | +1.13 (+0.95, +1.32) | 0.09 |
+| knn_preservation/gap | 15 | +2.49 (+2.21, +2.75) | 0.07 | +1.13 (+0.95, +1.32) | 0.09 |
+| amplification_ratio/gap | 13 | +2.44 (+2.16, +2.72) | 0.13 | +1.02 (+0.80, +1.23) | 0.20 |
+
+What changes relative to the ViT, and what does not:
+
+- **Depth still helps, but with a plateau instead of a peak.** Recovery rises steeply through stage 2
+  (blocks 3 to 6), plateaus across stage 3 (blocks 7 to 12) and the last block (15) is best on observed
+  corruptions at q = 0.20 (+11.5 pp of a 22.7 pp gap). The 0.5 pp equivalence set is wide:
+  [8, 9, 15] at q = 0.20 and [7, 8, 9, 10, 11, 13, 14, 15] at q = 0.05.
+- **On the CNN, every representation metric is a good selector.** Relative distance, cosine, 1 − CKA
+  and kNN preservation on GAP features all choose block 15 and pay ≤ 0.2 pp of regret on both observed
+  and unseen corruptions; the amplification ratio chooses block 8 with the same regret. The "CLS
+  token points one block too late" failure seen on DeiT-S does not occur here, so that failure is a
+  property of the ViT's read-out token, not of the metrics.
+- **Fixed rules are again as good as metrics.** Block 8 (middle) or block 15 (back) are within 0.2 pp of
+  optimal everywhere; block 0 is again the only harmful choice (−1.6 pp on unseen corruptions at q = 0.20).
+- **Unseen-corruption transfer holds** for every selector except the front block (regret ≤ 0.2 pp).
 
 ### Experiment D: exhaustive adapter reference, 3 training seeds (done, 2026-09-26)
 
