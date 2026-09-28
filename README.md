@@ -34,7 +34,7 @@ test data is touched; a small learned adapter is then trained at that block with
 | E3 | Generalization to unseen corruptions | done (contrast, JPEG held out) | 2026-09-26 |
 | E4 | Diagnostic patching vs. learned adapter | done (width 32 × 3 seeds; widths 8 and 64 × 1 seed) | 2026-09-27 |
 | E5 | ResNet re-validation | done (diagnostic patching, 16 sites, val 10 / test 5 seeds; adapter reference, width 32, 1 seed) | 2026-09-28 |
-| E6 | Extended metrics (task sensitivity, PH distances) | task-sensitivity selector evaluated (zero regret); persistent-homology distances computing | 2026-09-28 |
+| E6 | Extended metrics (task sensitivity, PH distances) | done (task sensitivity: zero regret; PH: one variant matches, no gain over cheaper metrics) | 2026-09-28 |
 
 Results are appended to the [Results](#results) section as they land.
 
@@ -525,6 +525,71 @@ Test-split accuracy change in pp (baseline: observed corruptions 37.5 %, unseen 
 - **Admissibility again decides.** With a 0.5 pp clean tolerance no ResNet site is admissible; at 1.5 pp
   only block 5 is (+11.2 pp observed, −3.2 pp unseen); at 3 pp the validation rule picks block 3
   (+12.6 pp observed, −8.2 pp unseen).
+
+### Experiment E6: extended selection metrics, task sensitivity and persistent homology (done, 2026-09-28)
+
+Two additional families of selectors were computed on the **score split** and frozen with the same rule as
+the others (direction fixed by the validation Spearman sign, mean rank across observed corruptions), then
+scored on the frozen DeiT-S test sweep. Because the original validation raw table was lost with its host, the
+validation utilities used to fix directions are the per-condition aggregates in
+`results/tables/val_patch_U_by_layer.csv` (mathematically identical to the row means used by `select_sites.py`;
+see `scripts/select_extended_local.py`). Tables: `results/e6/tables/`, `results/tables/*_extended.csv`.
+
+- **Task sensitivity** (proposal §11.2): the first-order margin change of moving the corrupted representation
+  toward the clean one, $\langle \nabla_{h_l} m,\; h_l(x)-h_l(\tilde x)\rangle$, averaged over the score split
+  (`task_sens_dot`), and its cosine-normalised form (`task_sens_cos`). Needs labels and one backward pass
+  per image (60 s on an RTX 3090 for 2 000 images × 6 conditions).
+- **Persistent homology** (proposal §12): bottleneck and 2-Wasserstein distances between the H0 and H1
+  diagrams of the clean and corrupted point clouds (200 points, PCA to 32 dimensions fitted on the clean
+  score set), for CLS and patch-mean summaries (`ripser` + `persim`; 200 points because the 2 000-point
+  variant with Wasserstein matching did not finish in 6 CPU-hours).
+
+*q = 0.20:*
+
+| selector | label / backward | site | observed U | observed regret | unseen U | unseen regret |
+|---|---|---|---|---|---|---|
+| val_sweep | labels (val sweep) | 10 | +8.65 | 0.00 | +4.85 | 0.00 |
+| one_minus_cka/patch_mean | none | 10 | +8.65 | 0.00 | +4.85 | 0.00 |
+| relative_distance/cls | none | 11 | +7.49 | 1.16 | +4.33 | 0.52 |
+| task_sens_dot/full | labels, 1 backward pass | 10 | +8.65 | 0.00 | +4.85 | 0.00 |
+| task_sens_cos/full | labels, 1 backward pass | 8 | +7.22 | 1.43 | +4.33 | 0.51 |
+| ph_bottleneck_H0/cls | none | 10 | +8.65 | 0.00 | +4.85 | 0.00 |
+| ph_bottleneck_H0/patch_mean | none | 9 | +8.23 | 0.42 | +4.68 | 0.17 |
+| ph_bottleneck_H1/cls | none | 11 | +7.49 | 1.16 | +4.33 | 0.52 |
+| ph_bottleneck_H1/patch_mean | none | 8 | +7.22 | 1.43 | +4.33 | 0.51 |
+| ph_wasserstein_H0/cls | none | 11 | +7.49 | 1.16 | +4.33 | 0.52 |
+| ph_wasserstein_H0/patch_mean | none | 9 | +8.23 | 0.42 | +4.68 | 0.17 |
+| ph_wasserstein_H1/cls | none | 8 | +7.22 | 1.43 | +4.33 | 0.51 |
+| ph_wasserstein_H1/patch_mean | none | 11 | +7.49 | 1.16 | +4.33 | 0.52 |
+
+*q = 0.05:*
+
+| selector | label / backward | site | observed U | observed regret | unseen U | unseen regret |
+|---|---|---|---|---|---|---|
+| val_sweep | labels (val sweep) | 9 | +1.86 | 0.00 | +1.17 | 0.00 |
+| one_minus_cka/patch_mean | none | 10 | +1.86 | 0.00 | +1.18 | 0.00 |
+| relative_distance/cls | none | 11 | +1.61 | 0.25 | +1.12 | 0.05 |
+| task_sens_dot/full | labels, 1 backward pass | 10 | +1.86 | 0.00 | +1.18 | 0.00 |
+| task_sens_cos/full | labels, 1 backward pass | 8 | +1.67 | 0.19 | +1.06 | 0.11 |
+| ph_bottleneck_H0/cls | none | 10 | +1.86 | 0.00 | +1.18 | 0.00 |
+| ph_bottleneck_H0/patch_mean | none | 9 | +1.86 | 0.00 | +1.17 | 0.00 |
+| ph_bottleneck_H1/cls | none | 11 | +1.61 | 0.25 | +1.12 | 0.05 |
+| ph_bottleneck_H1/patch_mean | none | 8 | +1.67 | 0.19 | +1.06 | 0.11 |
+| ph_wasserstein_H0/cls | none | 11 | +1.61 | 0.25 | +1.12 | 0.05 |
+| ph_wasserstein_H0/patch_mean | none | 9 | +1.86 | 0.00 | +1.17 | 0.00 |
+| ph_wasserstein_H1/cls | none | 8 | +1.67 | 0.19 | +1.06 | 0.11 |
+| ph_wasserstein_H1/patch_mean | none | 11 | +1.61 | 0.25 | +1.12 | 0.05 |
+
+- **The label-using task-sensitivity score is the best cheap selector.** `task_sens_dot` chooses block 10
+  at every budget and has zero regret on observed and unseen corruptions, matching the exhaustive
+  validation sweep at the cost of a single backward pass instead of 12 patching sweeps. Its cosine
+  normalisation destroys this (block 8, regret up to 1.4 pp): the *magnitude* of the aligned change,
+  not the alignment alone, is what predicts recovery.
+- **Topology adds one good selector but no new information.** Bottleneck distance on H0 of the CLS
+  cloud also picks block 10 with zero regret; every other PH variant lands on block 8, 9 or 11 with
+  0.2 to 1.4 pp regret, i.e. no better than the plain distance metrics. Since patch-mean 1 − CKA
+  already reaches zero regret without labels, gradients or persistent homology, the proposal's own
+  adoption criterion (§12.5: TDA must reduce regret relative to cheaper metrics) is **not met**.
 
 ### Experiment D: exhaustive adapter reference, 3 training seeds (done, 2026-09-26)
 
