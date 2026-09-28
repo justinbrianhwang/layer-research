@@ -30,7 +30,7 @@ test data is touched; a small learned adapter is then trained at that block with
 | T04 | `adapter_training` | done (9 tests; 63 total) | 2026-09-25 |
 | T05 | experiment scripts + CPU smoke run + GPU-readiness fixes | done (65 tests; real DeiT-S smoke chain verified on CPU) | 2026-09-25 |
 | E1 | Representation change vs. partial-patch recovery | done (val + test sweeps, 20 seeds, 12 conditions) | 2026-09-26 |
-| E2 | Budget dependence of site ranking | channel budget done (test); α = 0.5 and norm cap ρ = 0.5 running as validation-split sweeps (10 seeds); α = 0.25 dropped (host failure, credit) | 2026-09-27 |
+| E2 | Budget dependence of site ranking | channel budget done (test); α = 0.5 and norm cap ρ = 0.5 done as validation-split sweeps (10 seeds); α = 0.25 dropped (host failure, credit) | 2026-09-28 |
 | E3 | Generalization to unseen corruptions | done (contrast, JPEG held out) | 2026-09-26 |
 | E4 | Diagnostic patching vs. learned adapter | done (width 32 × 3 seeds; widths 8 and 64 × 1 seed) | 2026-09-27 |
 | E5 | ResNet re-validation | code for ResNet-50 (16 residual-block sites) in progress (Codex T08) | 2026-09-27 |
@@ -357,6 +357,41 @@ and the per-site adapter gain (width 32, 3-seed mean, test split):
   clean-accuracy constraint (block 10, see Experiment D) is also the best diagnostic site.
 - A representation metric read on the CLS token would have pointed at block 11 for both procedures;
   that is near-optimal for the diagnostic (regret ≤ 1.2 pp) and near-zero gain for the adapter.
+
+### Experiment E2 extension: patch strength α and norm cap (validation split, 2026-09-28)
+
+Validation split (2 000 images), observed corruptions (Gaussian noise + defocus blur, severities 1/3/5),
+mean accuracy change in pp over mask seeds and conditions. The α = 0.25 variant was lost to a host failure
+and not rerun, and the α = 0.5 / norm-cap test sweeps were not run, so this block is a **validation-split
+diagnostic of budget dependence**, not a held-out result. Tables: `results/e2_alpha050/tables/`,
+`results/e2_cap050/tables/` (frozen selections included).
+
+| budget | q | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | best |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| α = 1 (E1 sweep, 20 seeds) | 0.01 | +0.22 | +0.17 | +0.14 | +0.20 | +0.20 | +0.20 | +0.25 | +0.24 | +0.25 | +0.26 | +0.24 | +0.21 | 9 |
+| α = 1 (E1 sweep, 20 seeds) | 0.05 | +1.23 | +1.05 | +1.07 | +1.31 | +1.45 | +1.57 | +1.55 | +1.58 | +1.66 | +1.83 | +1.81 | +1.60 | 9 |
+| α = 1 (E1 sweep, 20 seeds) | 0.1 | +1.28 | +1.82 | +1.99 | +2.59 | +3.10 | +3.22 | +3.22 | +3.23 | +3.30 | +3.70 | +3.79 | +3.29 | 10 |
+| α = 1 (E1 sweep, 20 seeds) | 0.2 | +1.24 | +3.75 | +4.15 | +5.19 | +6.13 | +6.40 | +6.48 | +6.59 | +6.78 | +7.82 | +8.07 | +6.94 | 10 |
+| α = 0.5 (10 seeds) | 0.01 | +0.15 | +0.08 | +0.08 | +0.11 | +0.10 | +0.11 | +0.12 | +0.12 | +0.09 | +0.11 | +0.09 | +0.08 | 0 |
+| α = 0.5 (10 seeds) | 0.05 | +0.79 | +0.73 | +0.84 | +0.91 | +0.97 | +0.96 | +0.91 | +0.89 | +0.86 | +0.94 | +0.88 | +0.81 | 4 |
+| α = 0.5 (10 seeds) | 0.1 | +1.48 | +1.39 | +1.66 | +1.90 | +2.06 | +2.01 | +1.93 | +1.92 | +1.84 | +1.90 | +1.85 | +1.65 | 4 |
+| α = 0.5 (10 seeds) | 0.2 | +2.44 | +2.63 | +3.12 | +3.71 | +3.95 | +3.90 | +3.78 | +3.78 | +3.69 | +3.95 | +3.93 | +3.37 | 4 |
+| α = 1 with norm cap ρ = 0.5 (10 seeds) | 0.01 | +0.22 | +0.18 | +0.14 | +0.23 | +0.24 | +0.23 | +0.26 | +0.22 | +0.23 | +0.25 | +0.21 | +0.20 | 6 |
+| α = 1 with norm cap ρ = 0.5 (10 seeds) | 0.05 | +1.10 | +1.09 | +1.24 | +1.42 | +1.50 | +1.64 | +1.58 | +1.59 | +1.68 | +1.84 | +1.79 | +1.60 | 9 |
+| α = 1 with norm cap ρ = 0.5 (10 seeds) | 0.1 | +1.23 | +1.92 | +2.20 | +2.73 | +3.25 | +3.29 | +3.27 | +3.29 | +3.36 | +3.73 | +3.77 | +3.30 | 10 |
+| α = 1 with norm cap ρ = 0.5 (10 seeds) | 0.2 | +1.10 | +3.57 | +4.39 | +5.49 | +6.46 | +6.57 | +6.51 | +6.51 | +6.77 | +7.79 | +8.03 | +6.85 | 10 |
+
+- **The patch strength changes which site is best.** At full strength (α = 1) recovery keeps growing
+  with depth and block 10 wins for every q ≥ 0.05. At half strength (α = 0.5) the curve flattens after
+  block 4 and the best site moves to the *middle* of the network (block 4, with blocks 5, 9 and 10 within
+  0.1 pp). This is the budget dependence hypothesised in H2: a site ranking obtained under one
+  intervention strength does not transfer to another, even though the channel budget is identical.
+- **A norm cap of ρ = 0.5 changes nothing.** With the cap, the applied per-image deltas stay within
+  0.5 × the clean RMS budget for almost all images at these channel fractions, so recovery and ranking
+  are within 0.1 pp of the uncapped α = 1 sweep. Ranking stability under this auxiliary condition is
+  therefore confirmed, but the cap is not a binding constraint at q ≤ 0.20.
+- At q = 0.01 every site is within 0.1 pp of every other under all three budgets; the argmax there is
+  noise, as the 0.5 pp equivalence sets in the main E1/E3 tables already showed.
 
 ### Experiment D: exhaustive adapter reference, 3 training seeds (done, 2026-09-26)
 
