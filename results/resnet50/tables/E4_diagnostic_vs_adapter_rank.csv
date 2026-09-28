@@ -1,0 +1,7 @@
+domain,fraction,spearman,p,diag_best,adapter_best
+observed,0.05,-0.6941,0.0029,8,3
+observed,0.1,-0.6853,0.0034,8,3
+observed,0.2,-0.6882,0.0032,15,3
+unseen,0.05,0.6206,0.0103,7,9
+unseen,0.1,0.6471,0.0067,10,9
+unseen,0.2,0.6265,0.0094,9,9

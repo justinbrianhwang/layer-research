@@ -33,8 +33,8 @@ test data is touched; a small learned adapter is then trained at that block with
 | E2 | Budget dependence of site ranking | channel budget done (test); α = 0.5 and norm cap ρ = 0.5 done as validation-split sweeps (10 seeds); α = 0.25 dropped (host failure, credit) | 2026-09-28 |
 | E3 | Generalization to unseen corruptions | done (contrast, JPEG held out) | 2026-09-26 |
 | E4 | Diagnostic patching vs. learned adapter | done (width 32 × 3 seeds; widths 8 and 64 × 1 seed) | 2026-09-27 |
-| E5 | ResNet re-validation | diagnostic patching done on ResNet-50 (16 sites, val 10 / test 5 seeds); adapter reference training | 2026-09-28 |
-| E6 | Extended metrics (task sensitivity, PH distances) | code in progress (Codex T09); evaluated against the frozen E1 sweep | 2026-09-27 |
+| E5 | ResNet re-validation | done (diagnostic patching, 16 sites, val 10 / test 5 seeds; adapter reference, width 32, 1 seed) | 2026-09-28 |
+| E6 | Extended metrics (task sensitivity, PH distances) | task-sensitivity selector evaluated (zero regret); persistent-homology distances computing | 2026-09-28 |
 
 Results are appended to the [Results](#results) section as they land.
 
@@ -183,6 +183,27 @@ reviews and owns all commits.
 
 Results are appended as experiments finish, newest last. Generated-corruption evaluation on ImageNetV2
 (see [Data protocol](#data-protocol)); these are not official ImageNet-C numbers.
+
+### Findings at a glance
+
+1. **Where representations change most is not where a fixed-budget repair works best, and the
+   answer depends on the repair.** For privileged partial patching the best site on DeiT-S is
+   block 10 of 12 (ResNet-50: blocks 8 to 15); for a deployable learned adapter it is blocks 1 to 2
+   (ResNet-50: block 3). The two rankings are anti-correlated on the corruptions used for selection
+   (Spearman ρ ≈ −0.9 on DeiT-S, −0.7 on ResNet-50) and positively correlated on unseen corruptions.
+2. **Representation metrics are adequate selectors for the diagnostic, with one systematic failure.**
+   On DeiT-S every CLS-token metric points one block too late (block 11, regret 0.5 to 1.2 pp at
+   q ≥ 0.10); patch-mean 1 − CKA and a label-using task-sensitivity score reach zero regret. On ResNet-50
+   all GAP-based metrics are within 0.2 pp of optimal. A fixed "back" or "middle" rule is always within
+   1.2 pp, and the front block is the only harmful choice on either architecture.
+3. **Budget matters in three different ways.** Channel budget decides whether the choice matters at
+   all (all sites equivalent at q = 0.01); patch strength decides *which* site wins (α = 0.5 moves
+   the optimum to block 4); adapter capacity decides *whether any* site is admissible (width 8 is the
+   only width with sites inside a 0.5 pp clean-accuracy tolerance).
+4. **Selection on observed corruptions transfers to unseen ones for the diagnostic** (regret ≤ 0.5 pp)
+   but **not for adapters trained on them**: the adapter site that helps most on noise + blur hurts most
+   on contrast + JPEG. The deployable choice is governed by the clean-accuracy tolerance, not by any
+   representation metric.
 
 ### Experiment A: layer-wise representation change (done, 2026-09-25)
 
@@ -462,6 +483,48 @@ What changes relative to the ViT, and what does not:
 - **Fixed rules are again as good as metrics.** Block 8 (middle) or block 15 (back) are within 0.2 pp of
   optimal everywhere; block 0 is again the only harmful choice (−1.6 pp on unseen corruptions at q = 0.20).
 - **Unseen-corruption transfer holds** for every selector except the front block (regret ≤ 0.2 pp).
+
+**ResNet-50 learned adapters (E5 × E4).** One width-32 adapter per residual block (applied per spatial
+position, backbone and BatchNorm statistics frozen), one training seed, same recipe as for DeiT-S.
+Test-split accuracy change in pp (baseline: observed corruptions 37.5 %, unseen 56.1 %). Table:
+`results/resnet50/tables/E4_adapter_test_by_site.csv`.
+
+| site | observed | unseen | clean | gaussian_noise | defocus_blur | contrast | jpeg_compression |
+|---|---|---|---|---|---|---|---|
+| 0 | +10.70 | -8.38 | -1.65 | +9.78 | +11.62 | -14.23 | -2.52 |
+| 1 | +11.34 | -8.67 | -1.20 | +9.78 | +12.90 | -12.87 | -4.47 |
+| 2 | +10.88 | -9.49 | -2.20 | +9.70 | +12.05 | -13.00 | -5.98 |
+| 3 | +12.63 | -8.18 | -1.90 | +10.70 | +14.57 | -10.92 | -5.43 |
+| 4 | +11.38 | -4.44 | -2.10 | +9.90 | +12.85 | -10.33 | +1.45 |
+| 5 | +11.17 | -3.17 | -1.30 | +9.72 | +12.62 | -9.08 | +2.75 |
+| 6 | +9.86 | -2.58 | -2.00 | +8.47 | +11.25 | -7.72 | +2.55 |
+| 7 | +9.39 | -5.83 | -3.85 | +7.07 | +11.72 | -11.45 | -0.22 |
+| 8 | +8.25 | -2.27 | -3.25 | +6.10 | +10.40 | -6.28 | +1.73 |
+| 9 | +7.49 | -1.02 | -2.60 | +5.25 | +9.73 | -4.82 | +2.77 |
+| 10 | +5.92 | -2.27 | -2.25 | +4.30 | +7.53 | -5.63 | +1.10 |
+| 11 | +4.97 | -3.32 | -3.60 | +3.62 | +6.32 | -5.92 | -0.72 |
+| 12 | +3.01 | -4.22 | -5.15 | +1.37 | +4.65 | -6.62 | -1.82 |
+| 13 | -1.93 | -6.74 | -7.05 | -3.30 | -0.57 | -7.87 | -5.62 |
+| 14 | -2.80 | -7.28 | -6.95 | -3.73 | -1.87 | -8.80 | -5.75 |
+| 15 | -5.65 | -11.29 | -11.90 | -6.03 | -5.27 | -12.28 | -10.30 |
+
+| domain | q | Spearman ρ (diagnostic vs adapter) | p | best diagnostic site | best adapter site |
+|---|---|---|---|---|---|
+| observed | 0.05 | -0.69 | 0.0029 | 8 | 3 |
+| observed | 0.1 | -0.69 | 0.0034 | 8 | 3 |
+| observed | 0.2 | -0.69 | 0.0032 | 15 | 3 |
+| unseen | 0.05 | +0.62 | 0.0103 | 7 | 9 |
+| unseen | 0.1 | +0.65 | 0.0067 | 10 | 9 |
+| unseen | 0.2 | +0.63 | 0.0094 | 9 | 9 |
+
+- **Same story as the ViT, larger effect.** Early sites (blocks 0 to 5) recover 11 to 13 pp on the
+  observed corruptions but lose 8 to 9 pp on unseen ones (contrast alone: −11 to −14 pp); sites in the
+  last stage (13 to 15) are harmful everywhere, and a block-15 adapter costs 12 pp of clean accuracy.
+  The diagnostic ranking is anti-correlated with the adapter ranking on observed corruptions
+  (ρ ≈ −0.69) and positively correlated on unseen ones (ρ ≈ +0.63), exactly the pattern found on DeiT-S.
+- **Admissibility again decides.** With a 0.5 pp clean tolerance no ResNet site is admissible; at 1.5 pp
+  only block 5 is (+11.2 pp observed, −3.2 pp unseen); at 3 pp the validation rule picks block 3
+  (+12.6 pp observed, −8.2 pp unseen).
 
 ### Experiment D: exhaustive adapter reference, 3 training seeds (done, 2026-09-26)
 
